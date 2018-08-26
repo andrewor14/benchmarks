@@ -18,6 +18,7 @@
 SLURM_LOG_DIR="/home/andrewor/logs"
 RUN_PATH="/home/andrewor/benchmarks/scripts/tf_cnn_benchmarks/run_with_env.sh"
 SCRIPT_NAME="run_benchmark.sh"
+TIMESTAMP=`date +%s`
 
 srun --output="$SLURM_LOG_DIR/slurm-%x-%j-%n-$TIMESTAMP.out" "$RUN_PATH" "$SCRIPT_NAME"
 
