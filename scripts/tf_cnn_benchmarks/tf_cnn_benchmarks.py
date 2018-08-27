@@ -56,6 +56,8 @@ def main(positional_arguments):
                      % positional_arguments[1:])
 
   params = benchmark_cnn.make_params_from_flags()
+  log_fn('Params:\n\n%s\n\n' % str(params))
+
   with mlperf.mlperf_logger(absl_flags.FLAGS.ml_perf_compliance_logging,
                             params.model):
     params = benchmark_cnn.setup(params)

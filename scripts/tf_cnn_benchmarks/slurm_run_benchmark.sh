@@ -1,14 +1,14 @@
 #!/bin/bash
 #
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --nodes=4
+#SBATCH --ntasks=4
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=28
 #SBATCH --mem=64G
 #SBATCH --gres=gpu:4
 #SBATCH --time=48:00:00
 #
-#SBATCH --job-name=test_benchmark
+#SBATCH --job-name=benchmark
 #SBATCH --output=slurm-%x-%j.out
 #
 #SBATCH --mail-type=begin
@@ -20,5 +20,5 @@ RUN_PATH="/home/andrewor/benchmarks/scripts/tf_cnn_benchmarks/run_with_env.sh"
 SCRIPT_NAME="run_benchmark.sh"
 TIMESTAMP=`date +%s`
 
-srun --output="$SLURM_LOG_DIR/slurm-%x-%j-%n-$TIMESTAMP.out" "$RUN_PATH" "$SCRIPT_NAME"
+srun --output="$SLURM_LOG_DIR/slurm-%x-%j-%n-$TIMESTAMP.out" "$RUN_PATH" "$SCRIPT_NAME" "$TIMESTAMP"
 
