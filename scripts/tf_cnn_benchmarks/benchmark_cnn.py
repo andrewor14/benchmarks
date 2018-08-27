@@ -61,6 +61,7 @@ from tensorflow.python.framework import importer
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.util import nest
+from tensorflow_on_slurm import running_through_slurm, tf_config_from_slurm
 
 
 _DEFAULT_NUM_BATCHES = 100
@@ -1024,7 +1025,7 @@ def make_params(**kwargs):
       name: flags.param_specs[name].default_value
       for name in flags.param_specs
   }
-  params = Params(**default_kwargs)._replace(**kwargs)
+  params = Params(**merge_params_with_slurm(default_kwargs))._replace(**kwargs)
   validate_params(params)
   return params
 
@@ -1039,7 +1040,33 @@ def make_params_from_flags():
   # flags.param_specs.
   flag_values = {name: getattr(absl_flags.FLAGS, name)
                  for name in flags.param_specs.keys()}
-  return Params(**flag_values)
+  return Params(**merge_params_with_slurm(flag_values))
+
+
+def merge_params_with_slurm(flag_values):
+  """Merge the existing flag values with params from slurm, if any.
+
+  Conflicting params from slurm will override the existing values.
+  Note that we assume the benchmark script treats the first worker as
+  the chief downstream, so here we simply treat the chief as a worker.
+
+  :param flag_values: values parsed from command line flags
+  :return: an updated flag_values
+  """
+  if running_through_slurm():
+    cluster, my_job_name, my_task_index = tf_config_from_slurm(1, 2222)
+    ps_hosts = cluster["ps"]
+    worker_hosts = cluster["chief"] + cluster["worker"]
+    if my_job_name == "chief":
+      my_task_index = 0
+      my_job_name = "worker"
+    elif my_job_name == "worker":
+      my_task_index += 1
+    flag_values["ps_hosts"] = ",".join(ps_hosts)
+    flag_values["worker_hosts"] = ",".join(worker_hosts)
+    flag_values["job_name"] = my_job_name
+    flag_values["task_index"] = my_task_index
+  return flag_values
 
 
 def remove_param_fields(params, fields_to_remove):
