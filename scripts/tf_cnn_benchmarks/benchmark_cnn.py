@@ -1047,8 +1047,9 @@ def merge_params_with_slurm(flag_values):
   """Merge the existing flag values with params from slurm, if any.
 
   Conflicting params from slurm will override the existing values.
-  Note that we assume the benchmark script treats the first worker as
-  the chief downstream, so here we simply treat the chief as a worker.
+  Note that we simply treat all non-ps roles (e.g. chief and evaluator)
+  as workers, as we assume the benchmark script will assign these
+  roles for us downstream.
 
   :param flag_values: values parsed from command line flags
   :return: an updated flag_values
@@ -1056,12 +1057,7 @@ def merge_params_with_slurm(flag_values):
   if running_through_slurm():
     cluster, my_job_name, my_task_index = tf_config_from_slurm(1, 2222)
     ps_hosts = cluster["ps"]
-    worker_hosts = cluster["chief"] + cluster["worker"]
-    if my_job_name == "chief":
-      my_task_index = 0
-      my_job_name = "worker"
-    elif my_job_name == "worker":
-      my_task_index += 1
+    worker_hosts = cluster["worker"]
     flag_values["ps_hosts"] = ",".join(ps_hosts)
     flag_values["worker_hosts"] = ",".join(worker_hosts)
     flag_values["job_name"] = my_job_name
