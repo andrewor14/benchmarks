@@ -1,4 +1,12 @@
 #!/bin/bash
 
-python tf_cnn_benchmarks.py --num_gpus=1 --batch_size=32 --model=resnet50 --variable_update=parameter_server
+DATA_DIR="/tigress/andrewor/dataset/cifar10-dataset/cifar-10-batches-py"
+TRAIN_DIR="/tigress/andrewor/logs/resnet_cifar10_model_$1"
+
+python tf_cnn_benchmarks.py\
+  --num_gpus=4\
+  --batch_size=32\
+  --model=resnet56\
+  --data_dir="$DATA_DIR"\
+  --train_dir="$TRAIN_DIR"
 
