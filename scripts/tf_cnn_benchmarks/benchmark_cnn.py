@@ -53,6 +53,7 @@ import datasets
 import flags
 import variable_mgr
 import variable_mgr_util
+import ksync_optimizer
 from cnn_util import log_fn
 from models import model_config
 from platforms import util as platforms_util
@@ -234,8 +235,7 @@ flags.DEFINE_string('partitioned_graph_file_prefix', None,
                     'If specified, after the graph has been partitioned and '
                     'optimized, write out each partitioned graph to a file '
                     'with the given prefix.')
-flags.DEFINE_enum('optimizer', 'sgd', ('momentum', 'sgd', 'rmsprop'),
-                  'Optimizer to use: momentum or sgd or rmsprop')
+flags.DEFINE_enum('optimizer', 'sgd', 'Optimizer to use: momentum or sgd or rmsprop or ksync')
 flags.DEFINE_float('init_learning_rate', None,
                    'Initial learning rate for training.')
 flags.DEFINE_string('piecewise_learning_rate_schedule', None,
@@ -266,6 +266,12 @@ flags.DEFINE_float('momentum', 0.9, 'Momentum for training.')
 flags.DEFINE_float('rmsprop_decay', 0.9, 'Decay term for RMSProp.')
 flags.DEFINE_float('rmsprop_momentum', 0.9, 'Momentum in RMSProp.')
 flags.DEFINE_float('rmsprop_epsilon', 1.0, 'Epsilon term for RMSProp.')
+flags.DEFINE_float('ksync_num_replicas', None, 'Number of workers when using ksync optimizer.')
+flags.DEFINE_float('ksync_mode', 'sync', 'Synchronization mode when using ksync '
+                   'optimizer, one of \'sync\', \'async\', or \'ksync\'.')
+flags.DEFINE_float('ksync_scaling_duration', 10000, 'The duration (in steps) '
+                    'over which the number of replicas to aggregate reaches its '
+                    'final value, for ksync optimizer.')
 flags.DEFINE_float('gradient_clip', None,
                    'Gradient clipping magnitude. Disabled by default.')
 flags.DEFINE_float('weight_decay', 0.00004,
@@ -1095,6 +1101,32 @@ def get_optimizer(params, learning_rate):
         params.rmsprop_decay,
         momentum=params.rmsprop_momentum,
         epsilon=params.rmsprop_epsilon)
+  elif params.optimizer == 'ksync':
+    if params.cross_replica_sync:
+      raise ValueError("cross_replica_sync must be turned off when using the ksync optimizer")
+    if params.ksync_num_replicas is None:
+      raise ValueError("ksync_num_replicas must be set when using the ksync optimizer")
+    # Set params based on the mode
+    starting_num_replicas = 1
+    scaling_duration = params.ksync_scaling_duration
+    if param.ksync_mode == "sync":
+      starting_num_replicas = params.ksync_num_replicas
+    elif param.ksync_mode == "async":
+      scaling_duration = -1
+    elif param.ksync_mode == "ksync":
+      pass # ok
+    else:
+      raise ValueError('Ksync mode "%s" not recognized', params.ksync_mode)
+      opt = tf.train.MomentumOptimizer(
+        learning_rate, params.momentum, use_nesterov=True)
+      opt = ksync_optimizer.KSyncOptimizer(
+        opt,
+        starting_replicas_to_aggregate=starting_num_replicas,
+        total_num_replicas=params.ksync_num_replicas,
+        scaling_duration=scaling_duration)
+      is_chief = not params.job_name or params.task_index == 0
+      # TODO: what to do with this?
+      #training_hooks = [opt.make_session_run_hook(is_chief, num_tokens=0)]
   else:
     raise ValueError('Optimizer "%s" was not recognized',
                      params.optimizer)
