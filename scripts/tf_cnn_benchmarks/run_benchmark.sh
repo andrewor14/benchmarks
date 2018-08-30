@@ -9,5 +9,6 @@ python tf_cnn_benchmarks.py\
   --model=resnet56\
   --print_training_accuracy=True\
   --data_dir="$DATA_DIR"\
-  --train_dir="$TRAIN_DIR"
+  --train_dir="$TRAIN_DIR"\
+  --optimizer=momentum
 
