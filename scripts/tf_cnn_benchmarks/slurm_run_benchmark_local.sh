@@ -8,7 +8,7 @@
 #SBATCH --gres=gpu:4
 #SBATCH --time=48:00:00
 #
-#SBATCH --job-name=benchmark
+#SBATCH --job-name=benchmark-local
 #SBATCH --output=slurm-%x-%j.out
 #
 #SBATCH --mail-type=begin
