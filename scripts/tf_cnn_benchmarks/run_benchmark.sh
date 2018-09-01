@@ -8,8 +8,11 @@ python tf_cnn_benchmarks.py\
   --num_gpus="$NUM_GPUS"\
   --batch_size=128\
   --model=resnet56\
-  --print_training_accuracy=True\
+  --print_training_accuracy=true\
   --data_dir="$DATA_DIR"\
   --train_dir="$TRAIN_DIR"\
-  --optimizer=momentum
+  --optimizer=ksync\
+  --ksync_num_replicas=3\
+  --ksync_mode=sync\
+  --cross_replica_sync=false
 

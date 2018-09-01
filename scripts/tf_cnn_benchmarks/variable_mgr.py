@@ -83,8 +83,8 @@ class VariableMgr(object):
     del device_num, gradient_state  # unused by this implementation
     assert False, 'Must be implemented in subclass'
 
-  def append_apply_gradients_ops(self, gradient_state, opt, grads, training_ops,
-                                 loss_scale_params):
+  def append_apply_gradients_ops(self, gradient_state, opt, global_step,
+                                 grads, training_ops, loss_scale_params):
     """Adds training ops for grads to 'training_ops'.
 
 
@@ -92,6 +92,7 @@ class VariableMgr(object):
     Args:
       gradient_state: from previous call to apply_gradients_devices.
       opt: the underlying optimizer
+      global_step: the global step variable to update when applying gradients
       grads: [(grad, var)] to apply
       training_ops: list to which to add ops
       loss_scale_params: parameters for loss scaling.
@@ -100,7 +101,7 @@ class VariableMgr(object):
 
     def get_apply_gradients_ops_func():
       """Returns the apply_gradients op."""
-      return [opt.apply_gradients(grads)]
+      return [opt.apply_gradients(grads, global_step)]
 
     variable_mgr_util.append_gradients_with_loss_scale(
         training_ops, get_apply_gradients_ops_func, loss_scale_params,
@@ -729,8 +730,8 @@ class VariableMgrDistributedReplicated(VariableMgr):
       avg_grads[i] = (g, new_v)
     return avg_grads
 
-  def append_apply_gradients_ops(self, gradient_state, opt, grads, training_ops,
-                                 loss_scale_params):
+  def append_apply_gradients_ops(self, gradient_state, opt, global_step,
+                                 grads, training_ops, loss_scale_params):
     device_grads = gradient_state  # From 2nd result of preprocess_device_grads.
 
     def get_apply_gradients_ops_func():
@@ -739,7 +740,7 @@ class VariableMgrDistributedReplicated(VariableMgr):
       # For each variable, apply the combined gradients for this server on
       # the parameter server, and then wait for all other servers to do this.
       for i, (g, v) in enumerate(grads):
-        apply_gradient_op = opt.apply_gradients([(g, v)])
+        apply_gradient_op = opt.apply_gradients([(g, v)], global_step)
         barrier = self.benchmark_cnn.add_sync_queues_and_barrier(
             'replicate_variable_%s' % i, [apply_gradient_op])
         with tf.control_dependencies([barrier]):

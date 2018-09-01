@@ -235,7 +235,8 @@ flags.DEFINE_string('partitioned_graph_file_prefix', None,
                     'If specified, after the graph has been partitioned and '
                     'optimized, write out each partitioned graph to a file '
                     'with the given prefix.')
-flags.DEFINE_enum('optimizer', 'sgd', 'Optimizer to use: momentum or sgd or rmsprop or ksync')
+flags.DEFINE_enum('optimizer', 'sgd', ('momentum', 'sgd', 'rmsprop', 'ksync'),
+                  'Optimizer to use: momentum or sgd or rmsprop or ksync')
 flags.DEFINE_float('init_learning_rate', None,
                    'Initial learning rate for training.')
 flags.DEFINE_string('piecewise_learning_rate_schedule', None,
@@ -266,9 +267,10 @@ flags.DEFINE_float('momentum', 0.9, 'Momentum for training.')
 flags.DEFINE_float('rmsprop_decay', 0.9, 'Decay term for RMSProp.')
 flags.DEFINE_float('rmsprop_momentum', 0.9, 'Momentum in RMSProp.')
 flags.DEFINE_float('rmsprop_epsilon', 1.0, 'Epsilon term for RMSProp.')
-flags.DEFINE_float('ksync_num_replicas', None, 'Number of workers when using ksync optimizer.')
-flags.DEFINE_float('ksync_mode', 'sync', 'Synchronization mode when using ksync '
-                   'optimizer, one of \'sync\', \'async\', or \'ksync\'.')
+flags.DEFINE_integer('ksync_num_replicas', None, 'Number of workers when using ksync optimizer.')
+flags.DEFINE_enum('ksync_mode', 'sync', ('sync', 'async', 'ksync'),
+                  'Synchronization mode when using ksync optimizer, '
+                  'one of \'sync\', \'async\', or \'ksync\'.')
 flags.DEFINE_float('ksync_scaling_duration', 10000, 'The duration (in steps) '
                     'over which the number of replicas to aggregate reaches its '
                     'final value, for ksync optimizer.')
@@ -1109,24 +1111,21 @@ def get_optimizer(params, learning_rate):
     # Set params based on the mode
     starting_num_replicas = 1
     scaling_duration = params.ksync_scaling_duration
-    if param.ksync_mode == "sync":
+    if params.ksync_mode == "sync":
       starting_num_replicas = params.ksync_num_replicas
-    elif param.ksync_mode == "async":
+    elif params.ksync_mode == "async":
       scaling_duration = -1
-    elif param.ksync_mode == "ksync":
+    elif params.ksync_mode == "ksync":
       pass # ok
     else:
       raise ValueError('Ksync mode "%s" not recognized', params.ksync_mode)
-      opt = tf.train.MomentumOptimizer(
-        learning_rate, params.momentum, use_nesterov=True)
-      opt = ksync_optimizer.KSyncOptimizer(
-        opt,
-        starting_replicas_to_aggregate=starting_num_replicas,
-        total_num_replicas=params.ksync_num_replicas,
-        scaling_duration=scaling_duration)
-      is_chief = not params.job_name or params.task_index == 0
-      # TODO: what to do with this?
-      #training_hooks = [opt.make_session_run_hook(is_chief, num_tokens=0)]
+    opt = tf.train.MomentumOptimizer(
+      learning_rate, params.momentum, use_nesterov=True)
+    opt = ksync_optimizer.KSyncOptimizer(
+      opt,
+      starting_replicas_to_aggregate=starting_num_replicas,
+      total_num_replicas=params.ksync_num_replicas,
+      scaling_duration=scaling_duration)
   else:
     raise ValueError('Optimizer "%s" was not recognized',
                      params.optimizer)
@@ -1195,6 +1194,7 @@ class BenchmarkCNN(object):
     else:
       self.gpu_indices = [x for x in range(self.num_gpus)]
     self.use_synthetic_gpu_images = self.dataset.use_synthetic_gpu_images()
+    self._training_hooks = []
 
     if (self.params.device == 'cpu' and self.params.data_format == 'NCHW' and
         not self.params.mkl):
@@ -1838,64 +1838,78 @@ class BenchmarkCNN(object):
     # passing in None for summary_op to avoid a summary_thread being started.
     # Running summaries and training operations in parallel could run out of
     # GPU memory.
-    if is_chief and not self.forward_only_and_freeze:
-      saver = tf.train.Saver(
-          self.variable_mgr.savable_variables(),
-          save_relative_paths=True,
-          max_to_keep=self.params.max_ckpts_to_keep)
-    else:
-      saver = None
-    ready_for_local_init_op = None
-    if self.job_name and not (self.single_session or
-                              self.distributed_collective):
-      # In distributed mode, we don't want to run local_var_init_op_group until
-      # the global variables are initialized, because local_var_init_op_group
-      # may use global variables (such as in distributed replicated mode). We
-      # don't set this in non-distributed mode, because in non-distributed mode,
-      # local_var_init_op_group may itself initialize global variables (such as
-      # in replicated mode).
-      ready_for_local_init_op = tf.report_uninitialized_variables(
-          tf.global_variables())
+    # if is_chief and not self.forward_only_and_freeze:
+    #   saver = tf.train.Saver(
+    #       self.variable_mgr.savable_variables(),
+    #       save_relative_paths=True,
+    #       max_to_keep=self.params.max_ckpts_to_keep)
+    # else:
+    #   saver = None
+
+    # TODO(andrew): is it safe to ignore this?
+    # ready_for_local_init_op = None
+    # if self.job_name and not (self.single_session or
+    #                           self.distributed_collective):
+    #   # In distributed mode, we don't want to run local_var_init_op_group until
+    #   # the global variables are initialized, because local_var_init_op_group
+    #   # may use global variables (such as in distributed replicated mode). We
+    #   # don't set this in non-distributed mode, because in non-distributed mode,
+    #   # local_var_init_op_group may itself initialize global variables (such as
+    #   # in replicated mode).
+    #   ready_for_local_init_op = tf.report_uninitialized_variables(
+    #       tf.global_variables())
     if self.params.variable_update == 'horovod':
       import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top
       bcast_global_variables_op = hvd.broadcast_global_variables(0)
     else:
       bcast_global_variables_op = None
 
-    if self.params.variable_update == 'collective_all_reduce':
-      # It doesn't matter what this collective_graph_key value is,
-      # so long as it's > 0 and the same at every worker.
-      init_run_options = tf.RunOptions()
-      init_run_options.experimental.collective_graph_key = 6
-    else:
-      init_run_options = tf.RunOptions()
-    sv = tf.train.Supervisor(
+    # if self.params.variable_update == 'collective_all_reduce':
+    #   # It doesn't matter what this collective_graph_key value is,
+    #   # so long as it's > 0 and the same at every worker.
+    #   init_run_options = tf.RunOptions()
+    #   init_run_options.experimental.collective_graph_key = 6
+    # else:
+    #   init_run_options = tf.RunOptions()
+    # sv = tf.train.Supervisor(
+    #     # For the purpose of Supervisor, all Horovod workers are 'chiefs',
+    #     # since we want session to be initialized symmetrically on all the
+    #     # workers.
+    #     is_chief=is_chief or (self.params.variable_update == 'horovod'
+    #                           or self.distributed_collective),
+    #     # Log dir should be unset on non-chief workers to prevent Horovod
+    #     # workers from corrupting each other's checkpoints.
+    #     logdir=self.params.train_dir if is_chief else None,
+    #     ready_for_local_init_op=ready_for_local_init_op,
+    #     local_init_op=graph_info.local_var_init_op_group,
+    #     saver=saver,
+    #     global_step=graph_info.global_step,
+    #     summary_op=None,
+    #     save_model_secs=self.params.save_model_secs,
+    #     summary_writer=summary_writer,
+    #     local_init_run_options=init_run_options)
+
+    # start_standard_services = (
+    #     self.params.summary_verbosity >= 1 or
+    #     self.dataset.queue_runner_required())
+
+    step_train_times = []
+    target = self.cluster_manager.get_target() if self.cluster_manager else ''
+
+    with tf.train.MonitoredTrainingSession(
+        master=target,
         # For the purpose of Supervisor, all Horovod workers are 'chiefs',
         # since we want session to be initialized symmetrically on all the
         # workers.
         is_chief=is_chief or (self.params.variable_update == 'horovod'
                               or self.distributed_collective),
-        # Log dir should be unset on non-chief workers to prevent Horovod
-        # workers from corrupting each other's checkpoints.
-        logdir=self.params.train_dir if is_chief else None,
-        ready_for_local_init_op=ready_for_local_init_op,
-        local_init_op=graph_info.local_var_init_op_group,
-        saver=saver,
-        global_step=graph_info.global_step,
-        summary_op=None,
-        save_model_secs=self.params.save_model_secs,
-        summary_writer=summary_writer,
-        local_init_run_options=init_run_options)
-
-    step_train_times = []
-    start_standard_services = (
-        self.params.summary_verbosity >= 1 or
-        self.dataset.queue_runner_required())
-    target = self.cluster_manager.get_target() if self.cluster_manager else ''
-    with sv.managed_session(
-        master=target,
-        config=create_config_proto(self.params),
-        start_standard_services=start_standard_services) as sess:
+        checkpoint_dir=self.params.train_dir if is_chief else None,
+        hooks=self._training_hooks,
+        config=create_config_proto(self.params)) as sess:
+    # with sv.managed_session(
+    #     master=target,
+    #     config=create_config_proto(self.params),
+    #     start_standard_services=start_standard_services) as sess:
       if bcast_global_variables_op:
         sess.run(bcast_global_variables_op)
 
@@ -1988,8 +2002,8 @@ class BenchmarkCNN(object):
             profiler, image_producer, self.params, fetch_summary,
             benchmark_logger=self.benchmark_logger,
             collective_graph_key=collective_graph_key)
-        if summary_str is not None and is_chief:
-          sv.summary_computed(sess, summary_str)
+        # if summary_str is not None and is_chief:
+        #   sv.summary_computed(sess, summary_str)
         local_step += 1
       loop_end_time = time.time()
       # Waits for the global step to be done, regardless of done_fn.
@@ -2023,17 +2037,18 @@ class BenchmarkCNN(object):
 
       # Save the model checkpoint.
       if self.params.train_dir is not None and is_chief:
-        checkpoint_path = os.path.join(self.params.train_dir, 'model.ckpt')
         if not gfile.Exists(self.params.train_dir):
           gfile.MakeDirs(self.params.train_dir)
-        sv.saver.save(sess, checkpoint_path, graph_info.global_step)
+        # TODO(andrew): we got rid of the checkpoints here
+        # checkpoint_path = os.path.join(self.params.train_dir, 'model.ckpt')
+        # sv.saver.save(sess, checkpoint_path, graph_info.global_step)
 
       if graph_info.execution_barrier:
         # Wait for other workers to reach the end, so this worker doesn't
         # go away underneath them.
         sess.run([graph_info.execution_barrier])
 
-    sv.stop()
+    # sv.stop()
     if profiler:
       generate_tfprof_profile(profiler, self.params.tfprof_file)
     stats = {
@@ -2415,6 +2430,12 @@ class BenchmarkCNN(object):
 
         learning_rate = tf.identity(learning_rate, name='learning_rate_tensor')
         opt = get_optimizer(self.params, learning_rate)
+
+        # Add hooks for the KSyncOptimizer
+        is_chief = not self.params.job_name or self.params.task_index == 0
+        if isinstance(opt, ksync_optimizer.KSyncOptimizer):
+          self._training_hooks = [opt.make_session_run_hook(is_chief, num_tokens=0)]
+
         loss_scale_params = variable_mgr_util.AutoLossScaleParams(
             enable_auto_loss_scale=self.enable_auto_loss_scale,
             loss_scale=self.loss_scale,
@@ -2424,8 +2445,8 @@ class BenchmarkCNN(object):
 
         with tf.name_scope('append_apply_gradient_ops'):
           self.variable_mgr.append_apply_gradients_ops(
-              gradient_state, opt, clipped_grads, training_ops,
-              loss_scale_params)
+              gradient_state, opt, global_step, clipped_grads,
+              training_ops, loss_scale_params)
     train_op = tf.group(*(training_ops + update_ops), name='train_ops_group')
 
     with tf.device(self.cpu_device):
