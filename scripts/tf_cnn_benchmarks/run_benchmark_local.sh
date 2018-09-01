@@ -10,7 +10,8 @@ export NUM_GPUS=1
 
 function start_it() {
   export SLURMD_PROC_INDEX="$1"
-  LOG_FILE="$SLURM_LOG_DIR/slurm-benchmark-local-$SLURMD_PROC_INDEX-$TIMESTAMP.out"
+  export CUDA_VISIBLE_DEVICES="$1"
+  LOG_FILE="$SLURM_LOG_DIR/slurm-benchmark-$SLURM_JOB_ID-$SLURMD_PROC_INDEX-$TIMESTAMP.out"
   echo "Starting tensorflow process on $SLURMD_NODENAME ($SLURMD_PROC_INDEX), writing to $LOG_FILE"
   ./run_benchmark.sh "$TIMESTAMP" > "$LOG_FILE" 2>&1 &
 }
