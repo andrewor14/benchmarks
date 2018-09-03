@@ -36,6 +36,7 @@ def tensorflow_version():
 
 def log_fn(log):
   tf.logging.info(log)
+  print(log)
 
 
 def roll_numpy_batches(array, batch_size, shift_ratio):
