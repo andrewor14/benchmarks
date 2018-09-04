@@ -15,6 +15,7 @@ python tf_cnn_benchmarks.py\
   --train_dir="$TRAIN_DIR"\
   --optimizer=ksync\
   --ksync_num_replicas=4\
+  --ksync_scaling_duration=6500\
   --ksync_mode="$KSYNC_MODE"\
   --cross_replica_sync=false
 
