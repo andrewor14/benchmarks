@@ -702,7 +702,18 @@ class GlobalStepWatcher(threading.Thread):
         self.finish_step = global_step_val
 
   def done(self):
-    return self.finish_time > 0
+    finished = self.finish_time > 0
+    if finished:
+      # Once we're done, kill this app after N seconds
+      timeout = 600
+      def exit():
+        log_fn("Waiting %s seconds before exiting." % timeout)
+        time.sleep(timeout)
+        log_fn("Exiting after waiting for %s seconds." % timeout)
+        os._exit(1)
+      t = threading.Thread(target = exit)
+      t.start()
+    return finished
 
   def num_steps(self):
     return self.finish_step - self.start_step
