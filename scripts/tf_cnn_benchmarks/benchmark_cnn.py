@@ -576,7 +576,7 @@ class GlobalStepWatcher(threading.Thread):
     finished = self.finish_time > 0
     if finished:
       # Once we're done, kill this app after N seconds
-      timeout = 600
+      timeout = 120
       def exit():
         log_fn("Waiting %s seconds before exiting." % timeout)
         time.sleep(timeout)
