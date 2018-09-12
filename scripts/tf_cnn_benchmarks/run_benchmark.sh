@@ -7,6 +7,8 @@ OPTIMIZER="${OPTIMIZER:=ksync}"
 KSYNC_MODE="${KSYNC_MODE:=sync}"
 MODEL="${MODEL:=resnet32}"
 
+echo "Running this commit: $(git log --oneline | head -n 1)"
+
 python tf_cnn_benchmarks.py\
   --num_gpus="$NUM_GPUS"\
   --batch_size=128\
