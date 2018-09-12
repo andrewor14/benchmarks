@@ -20,5 +20,11 @@ RUN_PATH="/home/andrewor/benchmarks/scripts/tf_cnn_benchmarks/run_with_env.sh"
 SCRIPT_NAME="run_benchmark.sh"
 TIMESTAMP=`date +%s`
 
-srun --output="$SLURM_LOG_DIR/slurm-$RUN_TAG-$KSYNC_MODE-%j-%n-$TIMESTAMP.out" "$RUN_PATH" "$SCRIPT_NAME" "$TIMESTAMP"
+if [[ -n "$KSYNC_MODE" ]]; then
+  MODE="$KSYNC_MODE"
+elif [[ -n "$OPTIMIZER" ]]; then
+  MODE="$OPTIMIZER"
+fi
+
+srun --output="$SLURM_LOG_DIR/slurm-$RUN_TAG-$MODE-%j-%n-$TIMESTAMP.out" "$RUN_PATH" "$SCRIPT_NAME" "$TIMESTAMP"
 
