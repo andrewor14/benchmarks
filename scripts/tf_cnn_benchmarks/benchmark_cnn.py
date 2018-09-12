@@ -54,6 +54,7 @@ import flags
 import variable_mgr
 import variable_mgr_util
 import ksync_optimizer
+import my_sync_replicas_optimizer
 from cnn_util import log_fn
 from models import model_config
 from platforms import util as platforms_util
@@ -235,7 +236,7 @@ flags.DEFINE_string('partitioned_graph_file_prefix', None,
                     'If specified, after the graph has been partitioned and '
                     'optimized, write out each partitioned graph to a file '
                     'with the given prefix.')
-flags.DEFINE_enum('optimizer', 'sgd', ('momentum', 'sgd', 'rmsprop', 'ksync'),
+flags.DEFINE_enum('optimizer', 'sgd', ('momentum', 'sgd', 'rmsprop', 'ksync', 'mysync'),
                   'Optimizer to use: momentum or sgd or rmsprop or ksync')
 flags.DEFINE_float('init_learning_rate', None,
                    'Initial learning rate for training.')
@@ -1114,6 +1115,13 @@ def get_optimizer(params, learning_rate):
         params.rmsprop_decay,
         momentum=params.rmsprop_momentum,
         epsilon=params.rmsprop_epsilon)
+  elif params.optimizer == 'mysync':
+    opt = tf.train.MomentumOptimizer(
+      learning_rate, params.momentum, use_nesterov=True)
+    opt = my_sync_replicas_optimizer.SyncReplicasOptimizer(
+      opt,
+      replicas_to_aggregate=params.ksync_num_replicas,
+      total_num_replicas=params.ksync_num_replicas)
   elif params.optimizer == 'ksync':
     if params.cross_replica_sync:
       raise ValueError("cross_replica_sync must be turned off when using the ksync optimizer")
@@ -2444,7 +2452,7 @@ class BenchmarkCNN(object):
 
         # Add hooks for the KSyncOptimizer
         is_chief = not self.params.job_name or self.params.task_index == 0
-        if isinstance(opt, ksync_optimizer.KSyncOptimizer):
+        if self.params.optimizer == "ksync" or self.params.optimizer == "mysync":
           self._training_hooks = [opt.make_session_run_hook(is_chief, num_tokens=0)]
 
         loss_scale_params = variable_mgr_util.AutoLossScaleParams(
