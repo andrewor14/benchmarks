@@ -1918,9 +1918,12 @@ class BenchmarkCNN(object):
         master=target,
         config=create_config_proto(self.params),
         start_standard_services=start_standard_services) as sess:
-      sess = monitored_session._HookedSession(sess, self._hooks)
       for hook in self._hooks:
         hook.after_create_session(sess, sv._coord)
+
+      # Note: wrap it in HookedSession here to avoid hook.after_run
+      # being called before hook.after_create_session returns
+      sess = monitored_session._HookedSession(sess, self._hooks)
 
       if bcast_global_variables_op:
         sess.run(bcast_global_variables_op)
