@@ -2236,9 +2236,6 @@ class BenchmarkCNN(object):
         self.dataset.queue_runner_required())
     target = self.cluster_manager.get_target() if self.cluster_manager else ''
 
-    for hook in self._hooks:
-      hook.begin()
-
     with sv.managed_session(
         master=target,
         config=create_config_proto(self.params),
@@ -2899,6 +2896,10 @@ class BenchmarkCNN(object):
           self.variable_mgr.append_apply_gradients_ops(
               gradient_state, opt, global_step, clipped_grads,
               training_ops, loss_scale_params)
+
+    for hook in self._hooks:
+      hook.begin()
+
     train_op = tf.group(*(training_ops + update_ops), name='train_ops_group')
 
     with tf.device(self.cpu_device):
