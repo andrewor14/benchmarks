@@ -1,5 +1,16 @@
 #!/bin/bash
 
+# For running REAL local mode (not through slurm)
+if [[ -z "$SLURM_JOB_NODENAME" ]]; then
+  export MODEL="trivial"
+  export SLURM_JOB_NODELIST="localhost"
+  export SLURM_JOB_NODENAME="localhost"
+  export SLURM_JOB_NUM_NODES=1
+  export SLURMD_NODENAME="localhost"
+  export SLURM_JOB_ID="local"
+  export KSYNC_MODE="sync"
+fi
+
 SLURM_LOG_DIR="/home/andrewor/logs"
 TIMESTAMP=`date +%s`
 
