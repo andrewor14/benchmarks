@@ -14,7 +14,7 @@ python tf_cnn_benchmarks.py\
   --batch_size=128\
   --model="$MODEL"\
   --print_training_accuracy=true\
-  --num_epochs=100\
+  --num_epochs=600\
   --data_dir="$DATA_DIR"\
   --train_dir="$TRAIN_DIR"\
   --optimizer="$OPTIMIZER"\
