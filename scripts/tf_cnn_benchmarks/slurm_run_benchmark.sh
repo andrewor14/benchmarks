@@ -24,6 +24,9 @@ if [[ -n "$KSYNC_MODE" ]]; then
   MODE="$KSYNC_MODE"
 elif [[ -n "$OPTIMIZER" ]]; then
   MODE="$OPTIMIZER"
+  if [[ -n "$CROSS_REPLICA_SYNC" ]]; then
+    MODE="$MODE-$CROSS_REPLICA_SYNC"
+  fi
 fi
 
 srun --output="$SLURM_LOG_DIR/slurm-$RUN_TAG-$MODE-%j-%n-$TIMESTAMP.out" "$RUN_PATH" "$SCRIPT_NAME" "$TIMESTAMP"
