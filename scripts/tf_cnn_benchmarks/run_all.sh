@@ -7,8 +7,9 @@ fi
 export RUN_TAG
 export MODEL="resnet32"
 
-OPTIMIZER="momentum" sbatch slurm_run_benchmark.sh
+OPTIMIZER="momentum" CROSS_REPLICA_SYNC="false" sbatch slurm_run_benchmark.sh
+OPTIMIZER="momentum" CROSS_REPLICA_SYNC="true" sbatch slurm_run_benchmark.sh
 KSYNC_MODE="sync" sbatch slurm_run_benchmark.sh
-KSYNC_MODE="async" sbatch slurm_run_benchmark.sh
-KSYNC_MODE="ksync" sbatch slurm_run_benchmark.sh
+#KSYNC_MODE="async" sbatch slurm_run_benchmark.sh
+#KSYNC_MODE="ksync" sbatch slurm_run_benchmark.sh
 
