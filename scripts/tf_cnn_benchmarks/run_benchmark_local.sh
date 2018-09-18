@@ -1,5 +1,11 @@
 #!/bin/bash
 
+SLURM_LOG_DIR="/home/andrewor/logs"
+TIMESTAMP=`date +%s`
+
+export SLURM_JOB_NUM_PROCS_PER_NODE=4
+export NUM_GPUS=1
+
 # For running REAL local mode (not through slurm)
 if [[ -z "$SLURM_JOB_NODENAME" ]]; then
   export MODEL="trivial"
@@ -9,15 +15,9 @@ if [[ -z "$SLURM_JOB_NODENAME" ]]; then
   export SLURMD_NODENAME="localhost"
   export SLURM_JOB_ID="local"
   export KSYNC_MODE="sync"
+  export DEVICE="cpu"
+  export DATA_FORMAT="NHWC"
 fi
-
-SLURM_LOG_DIR="/home/andrewor/logs"
-TIMESTAMP=`date +%s`
-
-# Start 4 processes on each node we get from slurm
-# Since we assume the nodes have 4 GPUs each, the number of GPUs per node is 1
-export SLURM_JOB_NUM_PROCS_PER_NODE=4
-export NUM_GPUS=1
 
 function start_it() {
   export SLURMD_PROC_INDEX="$1"
