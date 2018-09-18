@@ -3,6 +3,8 @@
 DATA_DIR="/tigress/andrewor/dataset/cifar10-dataset/cifar-10-batches-py"
 TRAIN_DIR="/tigress/andrewor/logs/resnet_cifar10_model_$1"
 NUM_GPUS="${NUM_GPUS:=4}"
+DEVICE="${DEVICE:=gpu}"
+DATA_FORMAT="${DATA_FORMAT:=NCHW}"
 OPTIMIZER="${OPTIMIZER:=ksync}"
 KSYNC_MODE="${KSYNC_MODE:=sync}"
 MODEL="${MODEL:=resnet32}"
@@ -11,6 +13,9 @@ echo "Running this commit: $(git log --oneline | head -n 1)"
 
 python tf_cnn_benchmarks.py\
   --num_gpus="$NUM_GPUS"\
+  --device="$DEVICE"\
+  --local_parameter_device="$DEVICE"\
+  --data_format="$DATA_FORMAT"\
   --batch_size=128\
   --model="$MODEL"\
   --print_training_accuracy=true\
