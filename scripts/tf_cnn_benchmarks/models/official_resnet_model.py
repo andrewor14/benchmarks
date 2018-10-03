@@ -18,9 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import tensorflow as tf
 import datasets
 from models import model as model_lib
+from cnn_util import log_fn
 
 
 class ImagenetResnetModel(model_lib.CNNModel):
@@ -45,15 +47,23 @@ class ImagenetResnetModel(model_lib.CNNModel):
         model_name, 224, batch_size, default_learning_rate)
     self.resnet_size = resnet_size
     self.version = version
+    self.printed_learning_rate = False
 
   def get_learning_rate(self, global_step, batch_size):
     num_batches_per_epoch = (
         float(datasets.IMAGENET_NUM_TRAIN_IMAGES) / batch_size)
     boundaries = [int(num_batches_per_epoch * x) for x in [30, 60, 80, 90]]
     values = [1, 0.1, 0.01, 0.001, 0.0001]
-    adjusted_learning_rate = (
-        self.learning_rate / self.default_batch_size * batch_size)
+    adjusted_learning_rate = os.getenv("RESNET_BASE_LEARNING_RATE")
+    if adjusted_learning_rate is None:
+        adjusted_learning_rate = self.learning_rate / self.default_batch_size * batch_size
+    else:
+        adjusted_learning_rate = float(adjusted_learning_rate)
     values = [v * adjusted_learning_rate for v in values]
+    if not self.printed_learning_rate:
+        log_fn("ImagenetResnetModel: Learning rate boundaries = %s, values = %s, base = %s" % (
+            boundaries, values, adjusted_learning_rate))
+        self.printed_learning_rate = True
     return tf.train.piecewise_constant(global_step, boundaries, values)
 
   def build_network(self, images, phase_train=True, nclass=1001, image_depth=3,

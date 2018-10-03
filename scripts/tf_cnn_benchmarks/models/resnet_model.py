@@ -31,11 +31,13 @@ References:
   arXiv:1606.00915 (2016)
 """
 
+import os
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 import datasets
 from models import model as model_lib
+from cnn_util import log_fn
 
 
 def bottleneck_block_v1(cnn, depth, depth_bottleneck, stride):
@@ -259,6 +261,7 @@ class ResnetModel(model_lib.CNNModel):
       self.version = 'v1.5'
     else:
       self.version = 'v1'
+    self.printed_learning_rate = False
 
   def add_inference(self, cnn):
     if self.layer_counts is None:
@@ -287,7 +290,11 @@ class ResnetModel(model_lib.CNNModel):
     num_batches_per_epoch = (
         float(datasets.IMAGENET_NUM_TRAIN_IMAGES) / batch_size)
     boundaries = [int(num_batches_per_epoch * x) for x in [30, 60, 80, 90]]
-    rescaled_lr = self.learning_rate / self.default_batch_size * batch_size
+    rescaled_lr = os.getenv("RESNET_BASE_LEARNING_RATE")
+    if rescaled_lr is None:
+        rescaled_lr = self.learning_rate / self.default_batch_size * batch_size
+    else:
+        rescaled_lr = float(rescaled_lr)
     values = [1, 0.1, 0.01, 0.001, 0.0001]
     values = [rescaled_lr * v for v in values]
     lr = tf.train.piecewise_constant(global_step, boundaries, values)
@@ -295,6 +302,10 @@ class ResnetModel(model_lib.CNNModel):
     warmup_lr = (
         rescaled_lr * tf.cast(global_step, tf.float32) / tf.cast(
             warmup_steps, tf.float32))
+    if not self.printed_learning_rate:
+        log_fn("ResnetModel: Learning rate boundaries = %s, values = %s, base = %s" % (
+            boundaries, values, rescaled_lr))
+        self.printed_learning_rate = True
     return tf.cond(global_step < warmup_steps, lambda: warmup_lr, lambda: lr)
 
 

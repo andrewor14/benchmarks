@@ -5,7 +5,6 @@ if [[ -n "$1" ]]; then
   RUN_TAG="$RUN_TAG-$1"
 fi
 export RUN_TAG
-export MODEL="resnet32"
 
 OPTIMIZER="momentum" CROSS_REPLICA_SYNC="false" sbatch slurm_run_benchmark.sh
 OPTIMIZER="momentum" CROSS_REPLICA_SYNC="true" sbatch slurm_run_benchmark.sh
