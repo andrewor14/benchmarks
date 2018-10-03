@@ -32,11 +32,13 @@ References:
 """
 from __future__ import division
 
+import os
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 import datasets
 from models import model as model_lib
+from cnn_util import log_fn
 
 
 def bottleneck_block_v1(cnn, depth, depth_bottleneck, stride):
@@ -270,6 +272,7 @@ class ResnetModel(model_lib.CNNModel):
       self.version = 'v1.5'
     else:
       self.version = 'v1'
+    self.printed_learning_rate = False
 
   def add_inference(self, cnn):
     if self.layer_counts is None:
@@ -306,6 +309,10 @@ class ResnetModel(model_lib.CNNModel):
     warmup_lr = (
         rescaled_lr * tf.cast(global_step, tf.float32) / tf.cast(
             warmup_steps, tf.float32))
+    if not self.printed_learning_rate:
+        log_fn("ResnetModel: Learning rate boundaries = %s, values = %s, base = %s" % (
+            boundaries, values, rescaled_lr))
+        self.printed_learning_rate = True
     return tf.cond(global_step < warmup_steps, lambda: warmup_lr, lambda: lr)
 
   def get_scaled_base_learning_rate(self, batch_size):
@@ -321,6 +328,9 @@ class ResnetModel(model_lib.CNNModel):
     Returns:
       Base learning rate to use to create lr schedule.
     """
+    scaled_lr = os.getenv("RESNET_BASE_LEARNING_RATE")
+    if scaled_lr is not None:
+      return float(scaled_lr)
     base_lr = self.learning_rate
     if self.params.variable_update == 'replicated':
       base_lr = self.learning_rate / self.params.num_gpus
