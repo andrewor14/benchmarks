@@ -29,5 +29,9 @@ elif [[ -n "$OPTIMIZER" ]]; then
   fi
 fi
 
-srun --output="$SLURM_LOG_DIR/slurm-$RUN_TAG-$MODE-%j-%n-$TIMESTAMP.out" "$RUN_PATH" "$SCRIPT_NAME" "$TIMESTAMP"
+if [[ -n "$MODE" ]]; then
+  RUN_TAG="$RUN_TAG-$MODE"
+fi
+
+srun --output="$SLURM_LOG_DIR/slurm-$RUN_TAG-%j-%n-$TIMESTAMP.out" "$RUN_PATH" "$SCRIPT_NAME" "$TIMESTAMP"
 
