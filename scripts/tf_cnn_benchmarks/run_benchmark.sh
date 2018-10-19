@@ -12,8 +12,10 @@ BATCH_SIZE="${BATCH_SIZE:=64}"
 DATASET="${DATASET:=imagenet}"
 GPU_THREAD_MODE="${GPU_THREAD_MODE:=gpu_shared}"
 ALL_REDUCE_SPEC="${ALL_REDUCE_SPEC:=}"
+GRADIENT_REPACKING="${GRADIENT_REPACKING:=0}"
 VARIABLE_UPDATE="${VARIABLE_UPDATE:=parameter_server}"
 LOCAL_PARAMETER_DEVICE="${LOCAL_PARAMETER_DEVICE:=cpu}"
+ENABLE_CHROME_TRACE="${ENABLE_CHROME_TRACE:=false}"
 
 # Dataset-specific configs
 if [[ "$DATASET" = "cifar10" ]]; then
@@ -33,8 +35,13 @@ elif [[ "$DATASET" = "imagenet" ]]; then
   # echo "Resnet base learning rate = $RESNET_BASE_LEARNING_RATE"
 fi
 
+# Enable chrome trace by setting the trace file name
+if [[ "$ENABLE_CHROME_TRACE" == "true" ]]; then
+  TRACE_FILE="$TRAIN_DIR/chrome.trace"
+fi
+
 # In true local mode, everything is launched in one process
-if [[ -n "$TRUE_LOCAL_MODE" ]]; then
+if [[ "$TRUE_LOCAL_MODE" == "true" ]]; then
   unset SLURM_JOB_NODELIST
 fi
 
@@ -51,6 +58,7 @@ python tf_cnn_benchmarks.py\
   --num_epochs=100\
   --data_dir="$DATA_DIR"\
   --train_dir="$TRAIN_DIR"\
+  --trace_file="$TRACE_FILE"\
   --optimizer="$OPTIMIZER"\
   --ksync_num_replicas=4\
   --ksync_scaling_duration=6500\
@@ -61,5 +69,6 @@ python tf_cnn_benchmarks.py\
   --variable_update="$VARIABLE_UPDATE"\
   --local_parameter_device="$LOCAL_PARAMETER_DEVICE"\
   --use_fp16="$USE_FP16"\
+  --gradient_repacking="$GRADIENT_REPACKING"\
   --fp16_enable_auto_loss_scale=false # TODO: try me
 

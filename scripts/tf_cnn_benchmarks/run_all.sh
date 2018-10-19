@@ -14,8 +14,9 @@ export RUN_TAG
 
 export OPTIMIZER="momentum"
 export CROSS_REPLICA_SYNC="true"
+export ENABLE_CHROME_TRACE="true"
 
-#VARIABLE_UPDATE="parameter_server" GPU_THREAD_MODE="gpu_shared" USE_FP16=false sbatch slurm_run_benchmark.sh
+VARIABLE_UPDATE="parameter_server" GPU_THREAD_MODE="gpu_shared" USE_FP16=false sbatch slurm_run_benchmark_local.sh
 #VARIABLE_UPDATE="parameter_server" GPU_THREAD_MODE="gpu_private" USE_FP16=false sbatch slurm_run_benchmark.sh
 #VARIABLE_UPDATE="parameter_server" GPU_THREAD_MODE="gpu_shared" USE_FP16=true sbatch slurm_run_benchmark.sh
 #VARIABLE_UPDATE="parameter_server" GPU_THREAD_MODE="gpu_private" USE_FP16=true sbatch slurm_run_benchmark.sh
@@ -23,5 +24,5 @@ export CROSS_REPLICA_SYNC="true"
 #VARIABLE_UPDATE="distributed_replicated" GPU_THREAD_MODE="gpu_shared" USE_FP16=false sbatch slurm_run_benchmark.sh
 #VARIABLE_UPDATE="distributed_replicated" GPU_THREAD_MODE="gpu_private" USE_FP16=false sbatch slurm_run_benchmark.sh
 #VARIABLE_UPDATE="distributed_replicated" GPU_THREAD_MODE="gpu_shared" USE_FP16=true sbatch slurm_run_benchmark.sh
-VARIABLE_UPDATE="distributed_replicated" GPU_THREAD_MODE="gpu_private" USE_FP16=true sbatch slurm_run_benchmark.sh
+#VARIABLE_UPDATE="distributed_replicated" GPU_THREAD_MODE="gpu_private" USE_FP16=true sbatch slurm_run_benchmark.sh
 
