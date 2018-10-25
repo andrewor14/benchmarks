@@ -5,14 +5,19 @@ if [[ "$#" -lt 1 ]]; then
   exit 1
 fi
 
-module load cudnn/cuda-9.1/7.1.2
-module load anaconda3/5.0.1
+TF_PKG="/home/andrewor/tensorflow_pkg/tensorflow-1.10.1-cp36-cp36m-linux_x86_64.whl"
 
-# Note: This makes sure we're running tensorflow with GPU support
-# This is commented out because we only need to do this once
-#pip3 uninstall -y tensorflow
-#pip3 uninstall -y tensorflow-gpu
-#pip3 install --user tensorflow-gpu
+module load anaconda3/5.2.0
+module load cudnn/cuda-9.0/7.1.2
+module load openmpi/cuda-9.0/gcc/3.0.0/64
+
+# Use our custom Open MPI library, which just points to the one we just loaded
+export MPI_HOME="/home/andrewor/lib/openmpi"
+
+# Make sure we're running our custom version of tensorflow
+pip uninstall -y tensorflow
+pip uninstall -y tensorflow-gpu
+pip install --user "$TF_PKG"
 
 python test_gpu_support.py
 
