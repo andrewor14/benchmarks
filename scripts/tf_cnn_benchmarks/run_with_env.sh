@@ -15,9 +15,9 @@ module load openmpi/cuda-9.0/gcc/3.0.0/64
 export MPI_HOME="/home/andrewor/lib/openmpi"
 
 # Make sure we're running our custom version of tensorflow
-pip uninstall -y tensorflow
-pip uninstall -y tensorflow-gpu
-pip install --user "$TF_PKG"
+# Note: Do not uncomment this if you're running tensorflow in the mean time!
+#pip uninstall -y tensorflow tensorflow-gpu
+#pip install --user "$TF_PKG"
 
 python test_gpu_support.py
 
