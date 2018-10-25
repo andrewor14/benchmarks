@@ -9,8 +9,7 @@ MY_CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES"
 # CUDA_VISIBLE_DEVICES is being set below.
 export NUM_WORKERS=1
 export NUM_GPUS=4
-export BATCH_SIZE=64
-export SLURM_JOB_NUM_PROCS_PER_NODE=2
+export SLURM_JOB_NUM_PROCS_PER_NODE=1
 
 # In true local mode, we run the ps and the worker in the same process
 if [[ "$SLURM_JOB_NUM_PROCS_PER_NODE" == 1 ]]; then

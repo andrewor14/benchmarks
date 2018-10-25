@@ -28,11 +28,19 @@ elif [[ "$DATASET" = "imagenet" ]]; then
   TRAIN_DIR="/tigress/andrewor/logs/resnet50_imagenet_$1"
   MODEL="${MODEL:=resnet50_v1.5}"
   USE_FP16="${USE_FP16:=true}"
-  # Set base learning rate according to Facebook paper:
+  # Optionally set base learning rate according to Facebook paper:
   # Accurate, Large Minibatch SGD: Training ImageNet in 1 Hour
-  # RESNET_BASE_LEARNING_RATE="$(($BATCH_SIZE * $NUM_WORKERS * $NUM_GPUS / 256))"
-  # export RESNET_BASE_LEARNING_RATE="0.$RESNET_BASE_LEARNING_RATE" # divide by 10
-  # echo "Resnet base learning rate = $RESNET_BASE_LEARNING_RATE"
+  if [[ "$USE_FACEBOOK_BASE_LEARNING_RATE" == "true" ]]; then
+    if [[ -n "$RESNET_BASE_LEARNING_RATE" ]]; then
+      echo "ERROR: USE_FACEBOOK_BASE_LEARNING_RATE is not compatible with RESNET_BASE_LEARNING_RATE"
+      exit 1
+    fi
+    RESNET_BASE_LEARNING_RATE="$(($BATCH_SIZE * $NUM_WORKERS * $NUM_GPUS / 256))"
+    export RESNET_BASE_LEARNING_RATE="0.$RESNET_BASE_LEARNING_RATE" # divide by 10
+  fi
+  if [[ -n "$RESNET_BASE_LEARNING_RATE" ]]; then
+    echo "Resnet base learning rate = $RESNET_BASE_LEARNING_RATE"
+  fi
 fi
 
 # Enable chrome trace by setting the trace file name
