@@ -15,6 +15,8 @@
 #SBATCH --mail-type=end
 #SBATCH --mail-user=andrewor@princeton.edu
 
+# TODO: this is all duplicate code
+
 SLURM_LOG_DIR="/home/andrewor/logs"
 RUN_PATH="/home/andrewor/benchmarks/scripts/tf_cnn_benchmarks/run_with_env.sh"
 SCRIPT_NAME="run_benchmark_local.sh"

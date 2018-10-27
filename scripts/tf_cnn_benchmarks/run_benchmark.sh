@@ -15,6 +15,7 @@ ALL_REDUCE_SPEC="${ALL_REDUCE_SPEC:=}"
 GRADIENT_REPACKING="${GRADIENT_REPACKING:=0}"
 VARIABLE_UPDATE="${VARIABLE_UPDATE:=parameter_server}"
 LOCAL_PARAMETER_DEVICE="${LOCAL_PARAMETER_DEVICE:=cpu}"
+SERVER_PROTOCOL="${SERVER_PROTOCOL:=grpc}"
 ENABLE_CHROME_TRACE="${ENABLE_CHROME_TRACE:=false}"
 
 # Dataset-specific configs
@@ -78,5 +79,6 @@ python tf_cnn_benchmarks.py\
   --local_parameter_device="$LOCAL_PARAMETER_DEVICE"\
   --use_fp16="$USE_FP16"\
   --gradient_repacking="$GRADIENT_REPACKING"\
+  --server_protocol="$SERVER_PROTOCOL"\
   --fp16_enable_auto_loss_scale=false # TODO: try me
 

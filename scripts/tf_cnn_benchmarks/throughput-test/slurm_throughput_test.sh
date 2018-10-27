@@ -3,7 +3,6 @@
 #SBATCH --nodes=2
 #SBATCH --ntasks=2
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=28
 #SBATCH --mem=1G
 #SBATCH --time=00:05:00
 #
@@ -18,7 +17,8 @@ SLURM_LOG_DIR="/home/andrewor/logs"
 RUN_SCRIPT="throughput_test.sh"
 TIMESTAMP=`date +%s`
 
-module load openmpi/gcc/3.0.0/64
+# This doesn't seem necessary? Not sure.
+#module load openmpi/gcc/3.0.0/64
 
-mpirun --output-filename "$SLURM_LOG_DIR/mpi-throughput-test-$TIMESTAMP" $RUN_SCRIPT
+srun --output="$SLURM_LOG_DIR/mpi-throughput-test-$TIMESTAMP" $RUN_SCRIPT
 
