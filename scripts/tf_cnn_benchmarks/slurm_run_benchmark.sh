@@ -20,6 +20,7 @@ RUN_PATH="/home/andrewor/benchmarks/scripts/tf_cnn_benchmarks/run_with_env.sh"
 SCRIPT_NAME="run_benchmark.sh"
 TIMESTAMP=`date +%s`
 
+# Include optimizer/ksync mode in run tag
 if [[ -n "$KSYNC_MODE" ]]; then
   MODE="$KSYNC_MODE"
 elif [[ -n "$OPTIMIZER" ]]; then
@@ -32,6 +33,9 @@ fi
 if [[ -n "$MODE" ]]; then
   RUN_TAG="$RUN_TAG-$MODE"
 fi
+
+# Make sure we're actually running through MPI
+module load openmpi/gcc/3.0.0/64
 
 srun --output="$SLURM_LOG_DIR/slurm-$RUN_TAG-%j-%n-$TIMESTAMP.out" "$RUN_PATH" "$SCRIPT_NAME" "$TIMESTAMP"
 
