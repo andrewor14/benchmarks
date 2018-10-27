@@ -5,23 +5,25 @@ if [[ -n "$1" ]]; then
   RUN_TAG="$RUN_TAG-$1"
 fi
 export RUN_TAG
-export SLURM_RUN_SCRIPT="slurm_run_benchmark_local.sh"
+export SLURM_RUN_SCRIPT="slurm_run_benchmark.sh"
 export OPTIMIZER="rmsprop"
 export CROSS_REPLICA_SYNC="true"
 export BATCH_SIZE=256
 export ENABLE_CHROME_TRACE="false"
-export USE_FACEBOOK_BASE_LEARNING_RATE="false"
-export RESNET_BASE_LEARNING_RATE="0.8"
+export SERVER_PROTOCOL="grpc+mpi"
+#export MPI_OPTIMAL_PATH=1
+#export USE_FACEBOOK_BASE_LEARNING_RATE="true"
+#export RESNET_BASE_LEARNING_RATE="0.8"
 
 #VARIABLE_UPDATE="parameter_server" GPU_THREAD_MODE="gpu_shared" USE_FP16=false sbatch "$SLURM_RUN_SCRIPT"
 #VARIABLE_UPDATE="parameter_server" GPU_THREAD_MODE="gpu_private" USE_FP16=false sbatch "$SLURM_RUN_SCRIPT"
 #VARIABLE_UPDATE="parameter_server" GPU_THREAD_MODE="gpu_shared" USE_FP16=true sbatch "$SLURM_RUN_SCRIPT"
 #VARIABLE_UPDATE="parameter_server" GPU_THREAD_MODE="gpu_private" USE_FP16=true sbatch "$SLURM_RUN_SCRIPT"
 
-#VARIABLE_UPDATE="replicated" GPU_THREAD_MODE="gpu_shared" USE_FP16=false sbatch "$SLURM_RUN_SCRIPT"
-#VARIABLE_UPDATE="replicated" GPU_THREAD_MODE="gpu_private" USE_FP16=false sbatch "$SLURM_RUN_SCRIPT"
-#VARIABLE_UPDATE="replicated" GPU_THREAD_MODE="gpu_shared" USE_FP16=true sbatch "$SLURM_RUN_SCRIPT"
-VARIABLE_UPDATE="replicated" GPU_THREAD_MODE="gpu_private" USE_FP16=true sbatch "$SLURM_RUN_SCRIPT"
+#VARIABLE_UPDATE="distributed_replicated" GPU_THREAD_MODE="gpu_shared" USE_FP16=false sbatch "$SLURM_RUN_SCRIPT"
+#VARIABLE_UPDATE="distributed_replicated" GPU_THREAD_MODE="gpu_private" USE_FP16=false sbatch "$SLURM_RUN_SCRIPT"
+#VARIABLE_UPDATE="distributed_replicated" GPU_THREAD_MODE="gpu_shared" USE_FP16=true sbatch "$SLURM_RUN_SCRIPT"
+VARIABLE_UPDATE="distributed_replicated" GPU_THREAD_MODE="gpu_private" USE_FP16=true sbatch "$SLURM_RUN_SCRIPT"
 
 # Old stuff
 
