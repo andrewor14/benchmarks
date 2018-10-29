@@ -11,7 +11,6 @@ export CROSS_REPLICA_SYNC="true"
 export BATCH_SIZE=256
 export ENABLE_CHROME_TRACE="false"
 export SERVER_PROTOCOL="grpc+mpi"
-#export MPI_OPTIMAL_PATH=1
 #export USE_FACEBOOK_BASE_LEARNING_RATE="true"
 #export RESNET_BASE_LEARNING_RATE="0.8"
 

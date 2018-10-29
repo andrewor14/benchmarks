@@ -17,8 +17,7 @@ SLURM_LOG_DIR="/home/andrewor/logs"
 RUN_SCRIPT="/home/andrewor/benchmarks/scripts/tf_cnn_benchmarks/throughput-test/a.out"
 TIMESTAMP=`date +%s`
 
-# This doesn't seem necessary? Not sure.
-# module load openmpi/gcc/3.0.0/64
+module load openmpi/gcc/3.0.0/64
 
 srun --output="$SLURM_LOG_DIR/mpi-test-%j-%n-$TIMESTAMP.out" "$RUN_SCRIPT"
 
