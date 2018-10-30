@@ -1,12 +1,12 @@
 #!/bin/bash
 #
-#SBATCH --nodes=2
-#SBATCH --ntasks=2
+#SBATCH --nodes=5
+#SBATCH --ntasks=5
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=28
 #SBATCH --mem=64G
 #SBATCH --gres=gpu:4
-#SBATCH --time=00:10:00
+#SBATCH --time=144:00:00
 #
 #SBATCH --job-name=benchmark
 #SBATCH --output=slurm-%x-%j.out

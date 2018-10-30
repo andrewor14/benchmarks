@@ -25,7 +25,7 @@ if [[ "$DATASET" = "cifar10" ]]; then
   MODEL="${MODEL:=resnet56}"
   USE_FP16="${USE_FP16:=false}"
 elif [[ "$DATASET" = "imagenet" ]]; then
-  DATA_DIR="/tigress/haoyuz/imagenet-dataset/"
+  DATA_DIR="/tigress/andrewor/dataset/imagenet-dataset"
   TRAIN_DIR="/tigress/andrewor/logs/resnet50_imagenet_$1"
   MODEL="${MODEL:=resnet50_v1.5}"
   USE_FP16="${USE_FP16:=true}"
