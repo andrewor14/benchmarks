@@ -6,7 +6,7 @@ if [[ -n "$1" ]]; then
 fi
 export RUN_TAG
 export SLURM_RUN_SCRIPT="slurm_run_benchmark.sh"
-export OPTIMIZER="rmsprop"
+export OPTIMIZER="momentum"
 export CROSS_REPLICA_SYNC="true"
 export BATCH_SIZE=256
 export ENABLE_CHROME_TRACE="false"
