@@ -960,7 +960,9 @@ def merge_params_with_slurm(flag_values):
   :return: an updated flag_values
   """
   if running_through_slurm():
-    cluster, my_job_name, my_task_index = tf_config_from_slurm(1, 2222)
+    num_parameter_servers = os.getenv("NUM_PARAMETER_SERVERS") or 1
+    num_parameter_servers = int(num_parameter_servers)
+    cluster, my_job_name, my_task_index = tf_config_from_slurm(num_parameter_servers, 2222)
     ps_hosts = cluster["ps"]
     worker_hosts = cluster["worker"]
     flag_values["ps_hosts"] = ",".join(ps_hosts)
