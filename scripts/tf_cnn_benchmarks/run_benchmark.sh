@@ -56,6 +56,15 @@ fi
 
 echo "Running this commit: $(git log --oneline | head -n 1)"
 
+DIFF="$(git diff)"
+if [[ -n "$DIFF" ]]; then
+  echo "\n\n=========================================================================="
+  echo "git diff"
+  echo "--------------------------------------------------------------------------"
+  echo "$DIFF"
+  echo "==========================================================================\n\n"
+fi
+
 python tf_cnn_benchmarks.py\
   --num_gpus="$NUM_GPUS"\
   --device="$DEVICE"\
