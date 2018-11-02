@@ -17,12 +17,12 @@ export SERVER_PROTOCOL="grpc+mpi"
 #VARIABLE_UPDATE="parameter_server" GPU_THREAD_MODE="gpu_shared" USE_FP16=false sbatch "$SLURM_RUN_SCRIPT"
 #VARIABLE_UPDATE="parameter_server" GPU_THREAD_MODE="gpu_private" USE_FP16=false sbatch "$SLURM_RUN_SCRIPT"
 #VARIABLE_UPDATE="parameter_server" GPU_THREAD_MODE="gpu_shared" USE_FP16=true sbatch "$SLURM_RUN_SCRIPT"
-#VARIABLE_UPDATE="parameter_server" GPU_THREAD_MODE="gpu_private" USE_FP16=true sbatch "$SLURM_RUN_SCRIPT"
+VARIABLE_UPDATE="parameter_server" GPU_THREAD_MODE="gpu_private" USE_FP16=true sbatch "$SLURM_RUN_SCRIPT"
 
 #VARIABLE_UPDATE="distributed_replicated" GPU_THREAD_MODE="gpu_shared" USE_FP16=false sbatch "$SLURM_RUN_SCRIPT"
 #VARIABLE_UPDATE="distributed_replicated" GPU_THREAD_MODE="gpu_private" USE_FP16=false sbatch "$SLURM_RUN_SCRIPT"
 #VARIABLE_UPDATE="distributed_replicated" GPU_THREAD_MODE="gpu_shared" USE_FP16=true sbatch "$SLURM_RUN_SCRIPT"
-VARIABLE_UPDATE="distributed_replicated" GPU_THREAD_MODE="gpu_private" USE_FP16=true sbatch "$SLURM_RUN_SCRIPT"
+#VARIABLE_UPDATE="distributed_replicated" GPU_THREAD_MODE="gpu_private" USE_FP16=true sbatch "$SLURM_RUN_SCRIPT"
 
 # Old stuff
 
