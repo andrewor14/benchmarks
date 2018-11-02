@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-#SBATCH --nodes=5
-#SBATCH --ntasks=5
+#SBATCH --nodes=3
+#SBATCH --ntasks=3
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=28
 #SBATCH --mem=64G
@@ -17,7 +17,7 @@
 
 SLURM_LOG_DIR="/home/andrewor/logs"
 RUN_PATH="/home/andrewor/benchmarks/scripts/tf_cnn_benchmarks/run_with_env.sh"
-SCRIPT_NAME="run_benchmark.sh"
+SCRIPT_NAME="run_benchmark_multiplex.sh"
 TIMESTAMP=`date +%s`
 
 # Include optimizer/ksync mode in run tag
