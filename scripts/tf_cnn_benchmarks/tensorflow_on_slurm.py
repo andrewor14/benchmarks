@@ -16,12 +16,12 @@ SLURMD_NODENAME = "SLURMD_NODENAME"
 
 # For multiplexing a node to multiple processes
 SLURMD_PROC_INDEX = "SLURMD_PROC_INDEX"
-SLURM_JOB_NUM_WORKERS_PER_NODE = "SLURM_JOB_NUM_WORKERS_PER_NODE"
+SLURM_JOB_NUM_PROCS_PER_NODE = "SLURM_JOB_NUM_PROCS_PER_NODE"
 
 def running_through_slurm():
   return SLURM_JOB_NODELIST in os.environ and SLURMD_NODENAME in os.environ
 
-def tf_config_from_slurm(num_parameter_servers, port_number=2222):
+def tf_config_from_slurm(ps_number, port_number=2222):
   """
   Creates configuration for a distributed tensorflow session
   from environment variables  provided by the Slurm cluster
@@ -30,7 +30,7 @@ def tf_config_from_slurm(num_parameter_servers, port_number=2222):
   Note: This assumes that nodes are either ps or workers,
   and so does not work with the estimator API.
 
-  @param: num_parameter_servers number of parameter servers to run
+  @param: ps_number number of parameter servers to run
   @param: port_number port number to be used for communication
   @return: a tuple containing cluster with fields cluster_spec,
            task_name and task_id
@@ -43,10 +43,9 @@ def tf_config_from_slurm(num_parameter_servers, port_number=2222):
   node_list = _expand_node_list(os.environ[SLURM_JOB_NODELIST])
   num_nodes = int(os.environ[SLURM_JOB_NUM_NODES])
   proc_index = int(os.getenv(SLURMD_PROC_INDEX) or 0)
-  num_workers_per_node = int(os.getenv(SLURM_JOB_NUM_WORKERS_PER_NODE) or 1)
-  num_parameter_servers_remaining = num_parameter_servers
+  num_procs_per_node = int(os.getenv(SLURM_JOB_NUM_PROCS_PER_NODE) or 1)
 
-  if num_workers_per_node > 4:
+  if num_procs_per_node > 4:
     raise ValueError("We currently don't support more than 4 processes on one node")
 
   if len(node_list) != num_nodes:
@@ -57,47 +56,34 @@ def tf_config_from_slurm(num_parameter_servers, port_number=2222):
     raise ValueError("Node name ({}) not in node list ({}). This should not happen! "
                      .format(node_name, node_list))
 
-  # proc_index can be == num_workers_per_node because this might be a PS
-  if proc_index < 0 or proc_index > num_workers_per_node:
+  if proc_index < 0 or proc_index >= num_procs_per_node:
     raise ValueError("{} must be between 0 and {}, was {}"
-                     .format(SLURMD_PROC_INDEX, num_workers_per_node, proc_index))
-
-  if num_parameter_servers > num_nodes:
-    raise ValueError("Number of parameter servers {} cannot be greater than the number of nodes {}"
-                     .format(num_parameter_servers, num_nodes))
+                     .format(SLURMD_PROC_INDEX, num_procs_per_node - 1, proc_index))
 
   # Attach the port number to each node and maybe expand each node into multiple processes
-  my_proc_name = None
-  ps_procs = []
-  worker_procs = []
+  new_node_list = []
   for node in node_list:
-    # The first N nodes have 1 extra process, where N = num parameter servers
-    num_procs = num_workers_per_node
-    if num_parameter_servers_remaining > 0:
-      num_procs += 1
-      num_parameter_servers_remaining -= 1
-    for i in range(num_procs):
-      proc_name = "%s:%s" % (node, port_number + i)
+    for i in range(num_procs_per_node):
+      new_node_name = "%s:%s" % (node, port_number + i)
+      new_node_list.append(new_node_name)
       if node == node_name and i == proc_index:
-        my_proc_name = proc_name
-      # Assign parameter servers and workers
-      if i < num_workers_per_node:
-        worker_procs.append(proc_name)
-      else:
-        ps_procs.append(proc_name)
+        node_name = new_node_name
+  node_list = new_node_list
 
-  assert my_proc_name is not None
+  # Assign parameter servers and workers
+  ps_nodes = [node for i, node in enumerate(node_list) if i < ps_number]
+  worker_nodes = [node for i, node in enumerate(node_list) if i >= ps_number]
 
-  if my_proc_name in ps_procs:
+  if node_name in ps_nodes:
     my_job_name = "ps"
-    my_task_index = ps_procs.index(my_proc_name)
-  elif my_proc_name in worker_procs:
+    my_task_index = ps_nodes.index(node_name)
+  elif node_name in worker_nodes:
     my_job_name = "worker"
-    my_task_index = worker_procs.index(my_proc_name)
+    my_task_index = worker_nodes.index(node_name)
   else:
-    raise ValueError("Process ({}) is neither a ps nor a worker!".format(my_proc_name))
+    raise ValueError("Node name ({}) is neither a ps nor a worker!".format(node_name))
 
-  cluster = {"ps": ps_procs, "worker": worker_procs}
+  cluster = {"ps": ps_nodes, "worker": worker_nodes}
 
   return cluster, my_job_name, my_task_index
 
