@@ -49,8 +49,8 @@ if [[ "$ENABLE_CHROME_TRACE" == "true" ]]; then
   TRACE_FILE="$TRAIN_DIR/chrome.trace"
 fi
 
-# In local mode, everything is launched in one process
-if [[ "$LOCAL_MODE" == "true" ]]; then
+# In true local mode, everything is launched in one process
+if [[ "$TRUE_LOCAL_MODE" == "true" ]]; then
   unset SLURM_JOB_NODELIST
 fi
 
@@ -58,19 +58,12 @@ echo "Running this commit: $(git log --oneline | head -n 1)"
 
 DIFF="$(git diff)"
 if [[ -n "$DIFF" ]]; then
-  echo -e "\n\n=========================================================================="
-  echo -e "git diff"
-  echo -e "--------------------------------------------------------------------------"
-  echo -e "$DIFF"
-  echo -e "==========================================================================\n\n"
+  echo "\n\n=========================================================================="
+  echo "git diff"
+  echo "--------------------------------------------------------------------------"
+  echo "$DIFF"
+  echo "==========================================================================\n\n"
 fi
-
-echo -e "\n\n=========================================================================="
-echo -e "My environment variables:"
-echo -e "--------------------------------------------------------------------------"
-printenv
-echo -e "==========================================================================\n\n"
-
 
 python tf_cnn_benchmarks.py\
   --num_gpus="$NUM_GPUS"\
