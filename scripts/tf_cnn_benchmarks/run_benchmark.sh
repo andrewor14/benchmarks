@@ -17,16 +17,23 @@ VARIABLE_UPDATE="${VARIABLE_UPDATE:=parameter_server}"
 LOCAL_PARAMETER_DEVICE="${LOCAL_PARAMETER_DEVICE:=gpu}"
 SERVER_PROTOCOL="${SERVER_PROTOCOL:=grpc}"
 ENABLE_CHROME_TRACE="${ENABLE_CHROME_TRACE:=false}"
+# Checkpoint/eval configs
+SUMMARY_VERBOSITY="${SUMMARY_VERBOSITY:=1}"
+SAVE_SUMMARIES_STEPS="${SAVE_SUMMARIES_STEPS:=1000}"
+SAVE_MODEL_SECS="${SAVE_MODEL_SECS:=600}"
+EVAL_INTERVAL_SECS="${EVAL_INTERVAL_SECS:=$SAVE_MODEL_SECS}"
 
 # Dataset-specific configs
 if [[ "$DATASET" = "cifar10" ]]; then
   DATA_DIR="/tigress/andrewor/dataset/cifar10-dataset/cifar-10-batches-py"
-  TRAIN_DIR="/tigress/andrewor/logs/resnet_cifar10_model_$1"
+  TRAIN_DIR="/tigress/andrewor/train_logs/resnet_cifar10_model_$1"
+  EVAL_DIR="/tigress/andrewor/eval_logs/resnet_cifar10_model_$1"
   MODEL="${MODEL:=resnet56}"
   USE_FP16="${USE_FP16:=false}"
 elif [[ "$DATASET" = "imagenet" ]]; then
   DATA_DIR="/tigress/andrewor/dataset/imagenet-dataset"
-  TRAIN_DIR="/tigress/andrewor/logs/resnet50_imagenet_$1"
+  TRAIN_DIR="/tigress/andrewor/train_logs/resnet50_imagenet_$1"
+  EVAL_DIR="/tigress/andrewor/eval_logs/resnet50_imagenet_$1"
   MODEL="${MODEL:=resnet50_v1.5}"
   USE_FP16="${USE_FP16:=true}"
   # Optionally set base learning rate according to Facebook paper:
@@ -82,7 +89,12 @@ python tf_cnn_benchmarks.py\
   --num_epochs=100\
   --data_dir="$DATA_DIR"\
   --train_dir="$TRAIN_DIR"\
+  --eval_dir="$EVAL_DIR"\
   --trace_file="$TRACE_FILE"\
+  --summary_verbosity="$SUMMARY_VERBOSITY"\
+  --save_summaries_steps="$SAVE_SUMMARIES_STEPS"\
+  --save_model_secs="$SAVE_MODEL_SECS"\
+  --eval_interval_secs="$EVAL_INTERVAL_SECS"\
   --optimizer="$OPTIMIZER"\
   --ksync_num_replicas=4\
   --ksync_scaling_duration=6500\

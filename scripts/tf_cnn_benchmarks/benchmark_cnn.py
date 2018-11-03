@@ -1915,6 +1915,7 @@ class BenchmarkCNN(object):
 
       # Note: wrap it in HookedSession here to avoid hook.after_run
       # being called before hook.after_create_session returns
+      orig_sess = sess
       sess = monitored_session._HookedSession(sess, self._hooks)
 
       if bcast_global_variables_op:
@@ -2047,7 +2048,9 @@ class BenchmarkCNN(object):
         checkpoint_path = os.path.join(self.params.train_dir, 'model.ckpt')
         if not gfile.Exists(self.params.train_dir):
           gfile.MakeDirs(self.params.train_dir)
-        sv.saver.save(sess, checkpoint_path, graph_info.global_step)
+        # Note: `sess` is a HookedSession, which is a WrappedSession, but the saver
+        # expects a SessionInterface, so here we pass in the original session
+        sv.saver.save(orig_sess, checkpoint_path, graph_info.global_step)
 
       if graph_info.execution_barrier:
         # Wait for other workers to reach the end, so this worker doesn't
