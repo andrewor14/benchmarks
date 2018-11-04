@@ -8,7 +8,7 @@ fi
 TF_PKG="/home/andrewor/tensorflow_pkg/tensorflow-1.10.1-cp36-cp36m-linux_x86_64.whl"
 
 module load anaconda3/5.2.0
-module load cudnn/cuda-9.0/7.1.2
+module load cudnn/cuda-9.2/7.3.1
 module load openmpi/gcc/3.0.0/64
 
 # Use our custom Open MPI library, which just points to the one we just loaded
