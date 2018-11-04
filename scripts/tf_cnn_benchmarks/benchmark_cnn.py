@@ -332,9 +332,10 @@ flags.DEFINE_float('rmsprop_epsilon', 1.0, 'Epsilon term for RMSProp.')
 flags.DEFINE_float('adam_beta1', 0.9, 'Beta2 term for the Adam optimizer')
 flags.DEFINE_float('adam_beta2', 0.999, 'Beta2 term for the Adam optimizer')
 flags.DEFINE_float('adam_epsilon', 1e-8, 'Epsilon term for the Adam optimizer')
-flags.DEFINE_float('ksync_num_replicas', None, 'Number of workers when using ksync optimizer.')
-flags.DEFINE_float('ksync_mode', 'sync', 'Synchronization mode when using ksync '
-                   'optimizer, one of \'sync\', \'async\', or \'ksync\'.')
+flags.DEFINE_integer('ksync_num_replicas', None, 'Number of workers when using ksync optimizer.')
+flags.DEFINE_enum('ksync_mode', 'sync', ('sync', 'async', 'ksync'),
+                  'Synchronization mode when using ksync optimizer, '
+                  'one of \'sync\', \'async\', or \'ksync\'.')
 flags.DEFINE_float('ksync_scaling_duration', 10000, 'The duration (in steps) '
                     'over which the number of replicas to aggregate reaches its '
                     'final value, for ksync optimizer.')
