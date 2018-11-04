@@ -1220,24 +1220,21 @@ def get_optimizer(params, learning_rate):
     # Set params based on the mode
     starting_num_replicas = 1
     scaling_duration = params.ksync_scaling_duration
-    if param.ksync_mode == "sync":
+    if params.ksync_mode == "sync":
       starting_num_replicas = params.ksync_num_replicas
-    elif param.ksync_mode == "async":
+    elif params.ksync_mode == "async":
       scaling_duration = -1
-    elif param.ksync_mode == "ksync":
+    elif params.ksync_mode == "ksync":
       pass # ok
     else:
       raise ValueError('Ksync mode "%s" not recognized', params.ksync_mode)
-      opt = tf.train.MomentumOptimizer(
-        learning_rate, params.momentum, use_nesterov=True)
-      opt = ksync_optimizer.KSyncOptimizer(
-        opt,
-        starting_replicas_to_aggregate=starting_num_replicas,
-        total_num_replicas=params.ksync_num_replicas,
-        scaling_duration=scaling_duration)
-      is_chief = not params.job_name or params.task_index == 0
-      # TODO: what to do with this?
-      #training_hooks = [opt.make_session_run_hook(is_chief, num_tokens=0)]
+    opt = tf.train.MomentumOptimizer(
+      learning_rate, params.momentum, use_nesterov=True)
+    opt = ksync_optimizer.KSyncOptimizer(
+      opt,
+      starting_replicas_to_aggregate=starting_num_replicas,
+      total_num_replicas=params.ksync_num_replicas,
+      scaling_duration=scaling_duration)
   else:
     raise ValueError('Optimizer "%s" was not recognized',
                      params.optimizer)
@@ -1310,6 +1307,7 @@ class BenchmarkCNN(object):
       self.gpu_indices = [int(x) for x in self.params.gpu_indices.split(',')]
     else:
       self.gpu_indices = [x for x in range(self.num_gpus)]
+    self._training_hooks = []
 
     if (self.params.device == 'cpu' and self.params.data_format == 'NCHW' and
         not self.params.mkl):
@@ -2864,6 +2862,12 @@ class BenchmarkCNN(object):
 
         learning_rate = tf.identity(learning_rate, name='learning_rate_tensor')
         opt = get_optimizer(self.params, learning_rate)
+
+        # Add hooks for the KSyncOptimizer
+        is_chief = not self.params.job_name or self.params.task_index == 0
+        if isinstance(opt, ksync_optimizer.KSyncOptimizer):
+          self._training_hooks = [opt.make_session_run_hook(is_chief, num_tokens=0)]
+
         loss_scale_params = variable_mgr_util.AutoLossScaleParams(
             enable_auto_loss_scale=self.enable_auto_loss_scale,
             loss_scale=self.loss_scale,
@@ -2873,8 +2877,8 @@ class BenchmarkCNN(object):
 
         with tf.name_scope('append_apply_gradient_ops'):
           self.variable_mgr.append_apply_gradients_ops(
-              gradient_state, opt, clipped_grads, training_ops,
-              loss_scale_params)
+              gradient_state, opt, global_step, clipped_grads,
+              training_ops, loss_scale_params)
     train_op = tf.group(*(training_ops + update_ops), name='train_ops_group')
 
     with tf.device(self.cpu_device):
