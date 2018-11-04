@@ -2458,7 +2458,9 @@ class BenchmarkCNN(object):
           local_step % self.params.save_model_steps == 0 and
           local_step > 0 and
           is_chief):
-        supervisor.saver.save(sess, supervisor.save_path,
+        # Note: `sess` is a HookedSession, which is a WrappedSession, but the saver
+        # expects a SessionInterface, so here we pass in the original session
+        supervisor.saver.save(sess._sess, supervisor.save_path,
                               supervisor.global_step)
       if (eval_graph_info and local_step > 0 and not done_fn() and
           self._should_eval_during_training(local_step)):
@@ -2548,7 +2550,9 @@ class BenchmarkCNN(object):
       checkpoint_path = os.path.join(self.params.train_dir, 'model.ckpt')
       if not gfile.Exists(self.params.train_dir):
         gfile.MakeDirs(self.params.train_dir)
-      supervisor.saver.save(sess, checkpoint_path, graph_info.global_step)
+      # Note: `sess` is a HookedSession, which is a WrappedSession, but the saver
+      # expects a SessionInterface, so here we pass in the original session
+      supervisor.saver.save(sess._sess, checkpoint_path, graph_info.global_step)
     if graph_info.execution_barrier:
       # Wait for other workers to reach the end, so this worker doesn't
       # go away underneath them.
