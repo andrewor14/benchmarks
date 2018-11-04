@@ -58,6 +58,7 @@ from tensorflow.python.framework import graph_util_impl
 from tensorflow.python.framework import importer
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import gfile
+from tensorflow.python.training import monitored_session
 from tensorflow.python.util import nest
 from tensorflow_on_slurm import running_through_slurm, tf_config_from_slurm
 
@@ -1318,7 +1319,7 @@ class BenchmarkCNN(object):
       self.gpu_indices = [int(x) for x in self.params.gpu_indices.split(',')]
     else:
       self.gpu_indices = [x for x in range(self.num_gpus)]
-    self._training_hooks = []
+    self._hooks = []
 
     if (self.params.device == 'cpu' and self.params.data_format == 'NCHW' and
         not self.params.mkl):
@@ -2234,10 +2235,18 @@ class BenchmarkCNN(object):
         self.params.train_dir or
         self.dataset.queue_runner_required())
     target = self.cluster_manager.get_target() if self.cluster_manager else ''
+
+    for hook in self._hooks:
+      hook.begin()
+
     with sv.managed_session(
         master=target,
         config=create_config_proto(self.params),
         start_standard_services=start_standard_services) as sess:
+      sess = monitored_session._HookedSession(sess, self._hooks)
+      for hook in self._hooks:
+        hook.after_create_session(sess, sv._coord)
+
       # Anything that can potentially raise an OutOfRangeError with 'sess' MUST
       # be under this try block. The managed_session() context manager silently
       # ignores OutOfRangeError, so we must catch them and wrap them with
@@ -2877,7 +2886,7 @@ class BenchmarkCNN(object):
         # Add hooks for the KSyncOptimizer
         is_chief = not self.params.job_name or self.params.task_index == 0
         if isinstance(opt, ksync_optimizer.KSyncOptimizer):
-          self._training_hooks = [opt.make_session_run_hook(is_chief, num_tokens=0)]
+          self._hooks = [opt.make_session_run_hook(is_chief, num_tokens=0)]
 
         loss_scale_params = variable_mgr_util.AutoLossScaleParams(
             enable_auto_loss_scale=self.enable_auto_loss_scale,
