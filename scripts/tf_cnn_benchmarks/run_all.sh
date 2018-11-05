@@ -5,7 +5,7 @@ if [[ -n "$1" ]]; then
   RUN_TAG="$RUN_TAG-$1"
 fi
 export RUN_TAG
-export SLURM_RUN_SCRIPT="slurm_run_benchmark.sh"
+export SLURM_RUN_SCRIPT="slurm_run_benchmark_local.sh"
 export OPTIMIZER="momentum"
 export CROSS_REPLICA_SYNC="true"
 export BATCH_SIZE=256

@@ -20,6 +20,7 @@ ENABLE_CHROME_TRACE="${ENABLE_CHROME_TRACE:=false}"
 # Checkpoint/eval configs
 SAVE_MODEL_SECS="${SAVE_MODEL_SECS:=600}"
 EVAL_INTERVAL_SECS="${EVAL_INTERVAL_SECS:=$SAVE_MODEL_SECS}"
+EVAL_DURING_TRAINING_EVERY_N_EPOCHS="${EVAL_DURING_TRAINING_EVERY_N_EPOCHS:=0}"
 EVAL="${EVAL:=false}"
 
 # Dataset-specific configs
@@ -55,8 +56,8 @@ if [[ "$ENABLE_CHROME_TRACE" == "true" ]]; then
   TRACE_FILE="$TRAIN_DIR/chrome.trace"
 fi
 
-# In true local mode, everything is launched in one process
-if [[ "$TRUE_LOCAL_MODE" == "true" ]]; then
+# In local mode, everything is launched in one process
+if [[ "$LOCAL_MODE" == "true" ]]; then
   unset SLURM_JOB_NODELIST
 fi
 
@@ -92,6 +93,7 @@ python tf_cnn_benchmarks.py\
   --trace_file="$TRACE_FILE"\
   --save_model_steps="$SAVE_MODEL_SECS"\
   --eval_interval_secs="$EVAL_INTERVAL_SECS"\
+  --eval_during_training_every_n_epochs="$EVAL_DURING_TRAINING_EVERY_N_EPOCHS"\
   --eval="$EVAL"\
   --optimizer="$OPTIMIZER"\
   --ksync_num_replicas=4\

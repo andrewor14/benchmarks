@@ -15,25 +15,16 @@
 #SBATCH --mail-type=end
 #SBATCH --mail-user=andrewor@princeton.edu
 
-# TODO: this is all duplicate code
-
 SLURM_LOG_DIR="/home/andrewor/logs"
 RUN_PATH="/home/andrewor/benchmarks/scripts/tf_cnn_benchmarks/run_with_env.sh"
-SCRIPT_NAME="run_benchmark_local.sh"
+SCRIPT_NAME="run_benchmark.sh"
 TIMESTAMP=`date +%s`
+RUN_TAG="$RUN_TAG-local"
 
-if [[ -n "$KSYNC_MODE" ]]; then
-  MODE="$KSYNC_MODE"
-elif [[ -n "$OPTIMIZER" ]]; then
-  MODE="$OPTIMIZER"
-  if [[ -n "$CROSS_REPLICA_SYNC" ]]; then
-    MODE="$MODE-$CROSS_REPLICA_SYNC"
-  fi
-fi
-
-if [[ -n "$MODE" ]]; then
-  RUN_TAG="$RUN_TAG-$MODE"
-fi
+export LOCAL_MODE="true"
+export NUM_WORKERS="1"
+export LOCAL_PARAMETER_DEVICE="cpu"
+export EVAL_DURING_TRAINING_EVERY_N_EPOCHS="5"
 
 srun --output="$SLURM_LOG_DIR/slurm-$RUN_TAG-%j-%n-$TIMESTAMP.out" "$RUN_PATH" "$SCRIPT_NAME" "$TIMESTAMP"
 
