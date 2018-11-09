@@ -17,6 +17,8 @@ VARIABLE_UPDATE="${VARIABLE_UPDATE:=parameter_server}"
 LOCAL_PARAMETER_DEVICE="${LOCAL_PARAMETER_DEVICE:=gpu}"
 SERVER_PROTOCOL="${SERVER_PROTOCOL:=grpc}"
 ENABLE_CHROME_TRACE="${ENABLE_CHROME_TRACE:=false}"
+XLA="${XLA:=false}"
+XLA_COMPILE="${XLA_COMPILE:=false}"
 # Checkpoint/eval configs
 SAVE_MODEL_SECS="${SAVE_MODEL_SECS:=600}"
 EVAL_INTERVAL_SECS="${EVAL_INTERVAL_SECS:=$SAVE_MODEL_SECS}"
@@ -107,5 +109,7 @@ python tf_cnn_benchmarks.py\
   --use_fp16="$USE_FP16"\
   --gradient_repacking="$GRADIENT_REPACKING"\
   --server_protocol="$SERVER_PROTOCOL"\
+  --xla="$XLA"\
+  --xla_compile="$XLA_COMPILE"\
   --fp16_enable_auto_loss_scale=false # TODO: try me
 
