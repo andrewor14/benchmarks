@@ -19,12 +19,14 @@ SLURM_LOG_DIR="/home/andrewor/logs"
 RUN_PATH="/home/andrewor/benchmarks/scripts/tf_cnn_benchmarks/run_with_env.sh"
 SCRIPT_NAME="run_benchmark.sh"
 TIMESTAMP=`date +%s`
-RUN_TAG="$RUN_TAG-local"
 
 export LOCAL_MODE="true"
 export NUM_WORKERS="1"
 export LOCAL_PARAMETER_DEVICE="cpu"
-export EVAL_DURING_TRAINING_EVERY_N_EPOCHS="5"
+if [[ "$EVAL" != "true" ]]; then
+  RUN_TAG="$RUN_TAG-local"
+  export EVAL_DURING_TRAINING_EVERY_N_EPOCHS="5"
+fi
 
 srun --output="$SLURM_LOG_DIR/slurm-$RUN_TAG-%j-%n-$TIMESTAMP.out" "$RUN_PATH" "$SCRIPT_NAME" "$TIMESTAMP"
 

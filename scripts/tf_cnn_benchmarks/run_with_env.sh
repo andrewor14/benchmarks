@@ -19,11 +19,12 @@ export MPI_HOME="/home/andrewor/lib/openmpi"
 #pip uninstall -y tensorflow tensorflow-gpu
 #pip install --user "$TF_PKG"
 
-python test_gpu_support.py
-
-if [[ "$?" -ne 0 ]]; then
-  echo "GPU test failed. Exiting."
-  exit 1
+if [[ "$BYPASS_GPU_TEST" != "true" ]]; then
+  python test_gpu_support.py
+  if [[ "$?" -ne 0 ]]; then
+    echo "GPU test failed. Exiting."
+    exit 1
+  fi
 fi
 
 bash "$@"
