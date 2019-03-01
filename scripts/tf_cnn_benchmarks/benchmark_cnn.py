@@ -937,7 +937,8 @@ def load_checkpoint(saver, sess, ckpt_dir):
     global_step = 0
   else:
     global_step = int(global_step)
-  saver.restore(sess, model_checkpoint_path)
+  with tf.name_scope('restore_checkpoint'):
+    saver.restore(sess, model_checkpoint_path)
   log_fn('Successfully loaded model from %s.' % model_checkpoint_path)
   return global_step
 
@@ -2030,6 +2031,7 @@ class BenchmarkCNN(object):
     """
     graph = tf.Graph()
     with graph.as_default():
+      build_graph_start = time.time()
       build_result = self._build_graph()
       if self.mode == constants.BenchmarkMode.TRAIN_AND_EVAL:
         with self.variable_mgr.reuse_variables():
@@ -2038,6 +2040,8 @@ class BenchmarkCNN(object):
       else:
         eval_build_results = None
     (graph, result_to_benchmark) = self._preprocess_graph(graph, build_result)
+    build_graph_time = time.time() - build_graph_start
+    log_fn("ANDREW(build_graph_time): %s s" % build_graph_time)
     with graph.as_default():
       return self._benchmark_graph(result_to_benchmark, eval_build_results)
 
