@@ -2404,10 +2404,13 @@ class BenchmarkCNN(object):
           local_step % self.params.save_model_steps == 0 and
           local_step > 0 and
           is_chief):
+        save_checkpoint_start = time.time()
         # Note: `sess` is a HookedSession, which is a WrappedSession, but the saver
         # expects a SessionInterface, so here we pass in the original session
         supervisor.saver.save(sess._sess, supervisor.save_path,
                               supervisor.global_step)
+        save_checkpoint_time = time.time() - save_checkpoint_start
+        log_fn("ANDREW(save_checkpoint_time): %s s" % save_checkpoint_time)
       if (eval_graph_info and local_step > 0 and not done_fn() and
           self._should_eval_during_training(local_step)):
         python_global_step = sess.run(graph_info.global_step)

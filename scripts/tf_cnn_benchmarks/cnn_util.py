@@ -193,7 +193,7 @@ class ImageProducer(object):
     run_metadata = tf.RunMetadata()
     trace_filename = self.trace_filename
     self.sess.run([self.put_ops], options=run_options, run_metadata=run_metadata)
-    if trace_filename and self.trace_write_count < 10:
+    if trace_filename and self.trace_write_count < 1:
       log_fn('Image producer: writing to %s' % trace_filename)
       trace_dir = os.path.dirname(trace_filename)
       if not gfile.Exists(trace_dir):
