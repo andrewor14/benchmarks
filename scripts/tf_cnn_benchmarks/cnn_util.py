@@ -16,11 +16,15 @@
 """Utilities for CNN benchmarks."""
 from __future__ import print_function
 
+import os
 import sys
 import threading
 
 import numpy as np
 import tensorflow as tf
+
+from tensorflow.python.client import timeline
+from tensorflow.python.platform import gfile
 
 
 def tensorflow_version_tuple():
@@ -152,7 +156,7 @@ class ImageProducer(object):
   ```
   """
 
-  def __init__(self, sess, put_ops, batch_group_size, use_python32_barrier):
+  def __init__(self, sess, put_ops, batch_group_size, use_python32_barrier, trace_filename=None):
     self.sess = sess
     self.num_gets = 0
     self.put_ops = put_ops
@@ -163,6 +167,8 @@ class ImageProducer(object):
       self.put_barrier = threading.Barrier(2)
     else:
       self.put_barrier = Barrier(2)
+    self.trace_filename = trace_filename + ".producer" if trace_filename else None
+    self.trace_write_count = 0
 
   def _should_put(self):
     return (self.num_gets + 1) % self.batch_group_size == 0
@@ -175,11 +181,27 @@ class ImageProducer(object):
 
   def start(self):
     """Start the image producer."""
-    self.sess.run([self.put_ops])
+    self.run()
     self.thread = threading.Thread(target=self._loop_producer)
     # Set daemon to true to allow Ctrl + C to terminate all threads.
     self.thread.daemon = True
     self.thread.start()
+
+  def run(self):
+    """Run the producer operations."""
+    run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+    run_metadata = tf.RunMetadata()
+    trace_filename = self.trace_filename
+    self.sess.run([self.put_ops], options=run_options, run_metadata=run_metadata)
+    if trace_filename and self.trace_write_count < 10:
+      log_fn('Image producer: writing to %s' % trace_filename)
+      trace_dir = os.path.dirname(trace_filename)
+      if not gfile.Exists(trace_dir):
+        gfile.MakeDirs(trace_dir)
+      with gfile.Open(trace_filename, 'w') as trace_file:
+        trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+        trace_file.write(trace.generate_chrome_trace_format(show_memory=True))
+      self.trace_write_count += 1
 
   def notify_image_consumption(self):
     """Increment the counter of image_producer by 1.
@@ -195,7 +217,7 @@ class ImageProducer(object):
 
   def _loop_producer(self):
     while not self.done_event.isSet():
-      self.sess.run([self.put_ops])
+      self.run()
       self.put_barrier.wait()
 
 

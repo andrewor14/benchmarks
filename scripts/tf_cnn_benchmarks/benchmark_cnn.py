@@ -937,8 +937,10 @@ def load_checkpoint(saver, sess, ckpt_dir):
     global_step = 0
   else:
     global_step = int(global_step)
-  with tf.name_scope('restore_checkpoint'):
-    saver.restore(sess, model_checkpoint_path)
+  restore_checkpoint_start = time.time()
+  saver.restore(sess, model_checkpoint_path)
+  restore_checkpoint_time = time.time() - restore_checkpoint_start
+  log_fn("ANDREW(restore_checkpoint_time): %s s" % restore_checkpoint_time)
   log_fn('Successfully loaded model from %s.' % model_checkpoint_path)
   return global_step
 
@@ -1950,7 +1952,8 @@ class BenchmarkCNN(object):
       if input_producer_op is not None:
         image_producer = cnn_util.ImageProducer(
             sess, input_producer_op, self.batch_group_size,
-            self.params.use_python32_barrier)
+            self.params.use_python32_barrier,
+            self.trace_filename or None)
         image_producer.start()
       if enqueue_ops:
         for i in xrange(len(enqueue_ops)):
@@ -2304,7 +2307,8 @@ class BenchmarkCNN(object):
     if graph_info.input_producer_op is not None:
       image_producer = cnn_util.ImageProducer(
           sess, graph_info.input_producer_op, self.batch_group_size,
-          self.params.use_python32_barrier)
+          self.params.use_python32_barrier,
+          self.trace_filename or None)
       image_producer.start()
     if graph_info.enqueue_ops:
       for i in xrange(len(graph_info.enqueue_ops)):
@@ -2470,11 +2474,14 @@ class BenchmarkCNN(object):
     # Save the model checkpoint.
     if self.params.train_dir is not None and is_chief:
       checkpoint_path = os.path.join(self.params.train_dir, 'model.ckpt')
+      save_checkpoint_start = time.time()
       if not gfile.Exists(self.params.train_dir):
         gfile.MakeDirs(self.params.train_dir)
       # Note: `sess` is a HookedSession, which is a WrappedSession, but the saver
       # expects a SessionInterface, so here we pass in the original session
       supervisor.saver.save(sess._sess, checkpoint_path, graph_info.global_step)
+      save_checkpoint_time = time.time() - save_checkpoint_start
+      log_fn("ANDREW(save_checkpoint_time): %s s" % save_checkpoint_time)
     if graph_info.execution_barrier:
       # Wait for other workers to reach the end, so this worker doesn't
       # go away underneath them.
