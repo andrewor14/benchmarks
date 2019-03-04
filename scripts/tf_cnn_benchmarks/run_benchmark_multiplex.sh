@@ -5,9 +5,9 @@ TIMESTAMP="$1"
 MY_CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES"
 
 # Start multiple processes on a single node
-export NUM_WORKERS=1
+export NUM_WORKERS="${NUM_WORKERS:=1}"
 export NUM_GPUS=4
-export SLURM_JOB_NUM_PROCS_PER_NODE=2
+export SLURM_JOB_NUM_PROCS_PER_NODE="${SLURM_JOB_NUM_PROCS_PER_NODE:=2}"
 
 # This script is incompatible with single process local mode
 if [[ "$LOCAL_MODE" == "true" ]]; then
