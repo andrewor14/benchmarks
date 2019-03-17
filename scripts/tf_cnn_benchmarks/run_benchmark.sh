@@ -1,13 +1,18 @@
 #!/bin/bash
 
+# Set common configs
+source common_configs.sh
+
+# Use the same timestamp across all nodes to identify experiment
+SUBMIT_TIMESTAMP="$1"
+
 # General configs
 NUM_WORKERS="${NUM_WORKERS:=4}"
-NUM_GPUS="${NUM_GPUS:=4}"
+NUM_GPUS="${NUM_GPUS:=$DEFAULT_NUM_GPUS}"
 DEVICE="${DEVICE:=gpu}"
 DATA_FORMAT="${DATA_FORMAT:=NCHW}"
-OPTIMIZER="${OPTIMIZER:=ksync}"
+OPTIMIZER="${OPTIMIZER:=momentum}"
 CROSS_REPLICA_SYNC="${CROSS_REPLICA_SYNC:=false}"
-KSYNC_MODE="${KSYNC_MODE:=sync}"
 BATCH_SIZE="${BATCH_SIZE:=64}"
 DATASET="${DATASET:=imagenet}"
 GPU_THREAD_MODE="${GPU_THREAD_MODE:=gpu_shared}"
@@ -27,15 +32,11 @@ EVAL="${EVAL:=false}"
 
 # Dataset-specific configs
 if [[ "$DATASET" = "cifar10" ]]; then
-  DATA_DIR="/tigress/andrewor/dataset/cifar10-dataset/cifar-10-batches-py"
-  TRAIN_DIR="${TRAIN_DIR:=/tigress/andrewor/train_logs/resnet_cifar10_model_$1}"
-  EVAL_DIR="/tigress/andrewor/eval_logs/resnet_cifar10_model_$1"
+  DATA_DIR="$CIFAR10_DATA_DIR"
   MODEL="${MODEL:=resnet56}"
   USE_FP16="${USE_FP16:=false}"
 elif [[ "$DATASET" = "imagenet" ]]; then
-  DATA_DIR="/tigress/andrewor/dataset/imagenet-dataset"
-  TRAIN_DIR="${TRAIN_DIR:=/tigress/andrewor/train_logs/resnet50_imagenet_$1}"
-  EVAL_DIR="/tigress/andrewor/eval_logs/resnet50_imagenet_$1"
+  DATA_DIR="$IMAGENET_DATA_DIR"
   MODEL="${MODEL:=resnet50_v1.5}"
   USE_FP16="${USE_FP16:=true}"
   # Optionally set base learning rate according to Facebook paper:
@@ -53,13 +54,17 @@ elif [[ "$DATASET" = "imagenet" ]]; then
   fi
 fi
 
+# Set working directories
+TRAIN_DIR="${TRAIN_DIR:=$BASE_TRAIN_DIR/$DATASET_$MODEL_$SUBMIT_TIMESTAMP}"
+EVAL_DIR="${EVAL_DIR:=$BASE_EVAL_DIR/$DATASET_$MODEL_$SUBMIT_TIMESTAMP}"
+
 # Enable chrome trace by setting the trace file name
 if [[ "$ENABLE_CHROME_TRACE" == "true" ]]; then
   TRACE_FILE="$TRAIN_DIR/chrome.trace"
 fi
 
-# In local mode, everything is launched in one process
-if [[ "$LOCAL_MODE" == "true" ]]; then
+# In single process mode, everything is launched in one process
+if [[ "$SINGLE_PROCESS_MODE" == "true" ]]; then
   unset SLURM_JOB_NODELIST
 fi
 
@@ -98,9 +103,6 @@ python tf_cnn_benchmarks.py\
   --eval_during_training_every_n_epochs="$EVAL_DURING_TRAINING_EVERY_N_EPOCHS"\
   --eval="$EVAL"\
   --optimizer="$OPTIMIZER"\
-  --ksync_num_replicas=4\
-  --ksync_scaling_duration=6500\
-  --ksync_mode="$KSYNC_MODE"\
   --cross_replica_sync="$CROSS_REPLICA_SYNC"\
   --gpu_thread_mode="$GPU_THREAD_MODE"\
   --all_reduce_spec="$ALL_REDUCE_SPEC"\
@@ -110,6 +112,5 @@ python tf_cnn_benchmarks.py\
   --gradient_repacking="$GRADIENT_REPACKING"\
   --server_protocol="$SERVER_PROTOCOL"\
   --xla="$XLA"\
-  --xla_compile="$XLA_COMPILE"\
-  --fp16_enable_auto_loss_scale=false # TODO: try me
+  --xla_compile="$XLA_COMPILE"
 
