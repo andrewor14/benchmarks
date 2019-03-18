@@ -8,6 +8,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import re
 
 
 SLURM_JOB_NODELIST = "SLURM_JOB_NODELIST"
@@ -89,20 +90,75 @@ def tf_config_from_slurm(ps_number, port_number=2222):
 
 def _expand_node_list(node_list):
   """
-  Updated by haoyuz:
-  The following implementation (commented, from original code) does not understand
-  patterns like "tiger-i19g7,tiger-i20g[5-7]"
-  At this moment we cannot find code that correctly converts the node_list to hostnames.
-  The command `scontrol` does the trick:
-    scontrol show hostnames 'compute-b24-[1-3,5-9],compute-b25-[1,4,8]'
-  Note that this only works for Python 3.5+ and is NOT backwards compatible.
+  Expand a list of comma-separated nodes in shortened slurm format.
 
-  :param node_list: list of Slurm node in shortened format
+  In the node list to be expanded, nodes sharing the same prefix can be grouped together,
+  with the different suffixes listed in square brackets following the prefix. For example,
+  a node list of "tiger-i19g7,tiger-i20g[1,5-7]" expands to five nodes:
+
+    tiger-i19g7
+    tiger-i20g1
+    tiger-i20g5
+    tiger-i20g6
+    tiger-i20g7
+
+  The return value for this function should be the same as running:
+
+    scontrol show hostname $SLURM_JOB_NODELIST
+
+  Since `scontrol` may not be available on all systems, we will re-implement the expansion
+  here in python ourselves.
+
+  :param node_list: list of slurm node in shortened format
   :return: list of strings, each one is a hostname
   """
+  #import subprocess
+  #return subprocess.run(
+  #    ["scontrol show hostname $SLURM_JOB_NODELIST"],
+  #    shell=True,
+  #    stdout=subprocess.PIPE).stdout.decode('utf-8').split()
 
-  import subprocess
-  return subprocess.run(
-      ["scontrol show hostname $SLURM_JOB_NODELIST"],
-      shell=True,
-      stdout=subprocess.PIPE).stdout.decode('utf-8').split()
+  nodes = []
+  patterns = []
+
+  # First, split the node list into patterns, e.g. ["tiger-i19g7", "tiger-i20g[1,5-7]"].
+  # Note that we cannot just use split because some commas exist within square brackets.
+  pattern_so_far = ""
+  in_square_brackets = False
+  for c in node_list:
+    if c == "[":
+      in_square_brackets = True
+    if c == "]":
+      in_square_brackets = False
+    if c == "," and not in_square_brackets:
+      patterns.append(pattern_so_far)
+      pattern_so_far = ""
+    else:
+      pattern_so_far += c
+  patterns.append(pattern_so_far)
+
+  # Next, we break down each pattern
+  for pattern in patterns:
+    # Look for square brackets
+    m = re.match("(.*)\[(.*)\]", pattern)
+    if m is None:
+      # This is just one node, so we collect it
+      nodes.append(pattern)
+    else:
+      # This is actually multiple nodes
+      # e.g. prefix = "tiger-i20g", suffix = "1,5-7"
+      (prefix, suffixes) = m.groups()
+      for group in suffixes.split(","):
+        m = re.match("(\d*)\-(\d*)", group)
+        # e.g. group = "5-7"
+        if m is not None:
+          (start, end) = m.groups()
+          for i in range(int(start), int(end) + 1):
+            nodes.append("%s%s" % (prefix, i))
+        # e.g. group = "1"
+        elif group.isdigit():
+          nodes.append("%s%s" % (prefix, group))
+        else:
+          raise ValueError("Unexpected pattern '%s' in node list '%s'" % (group, node_list))
+  return nodes
+
