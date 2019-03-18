@@ -1,13 +1,26 @@
 #!/bin/bash
 
+# =============================================================
+#  The main entry point to launching a tensorflow process
+#
+#  This expects the following environment variables to be set:
+#  SUBMIT_TIMESTAMP and NUM_WORKERS
+# =============================================================
+
 # Set common configs
 source common_configs.sh
 
-# Use the same timestamp across all nodes to identify experiment
-SUBMIT_TIMESTAMP="$1"
+if [[ -z "$SUBMIT_TIMESTAMP" ]]; then
+  echo "ERROR: SUBMIT_TIMESTAMP must be set."
+  exit 1
+fi
+
+if [[ -z "$NUM_WORKERS" ]]; then
+  echo "ERROR: NUM_WORKERS must be set."
+  exit 1
+fi
 
 # General configs
-NUM_WORKERS="${NUM_WORKERS:=4}"
 NUM_GPUS="${NUM_GPUS:=$DEFAULT_NUM_GPUS}"
 DEVICE="${DEVICE:=gpu}"
 DATA_FORMAT="${DATA_FORMAT:=NCHW}"
@@ -61,11 +74,6 @@ EVAL_DIR="${EVAL_DIR:=$BASE_EVAL_DIR/$DATASET_$MODEL_$SUBMIT_TIMESTAMP}"
 # Enable chrome trace by setting the trace file name
 if [[ "$ENABLE_CHROME_TRACE" == "true" ]]; then
   TRACE_FILE="$TRAIN_DIR/chrome.trace"
-fi
-
-# In single process mode, everything is launched in one process
-if [[ "$SINGLE_PROCESS_MODE" == "true" ]]; then
-  unset SLURM_JOB_NODELIST
 fi
 
 echo "Running this commit: $(git log --oneline | head -n 1)"
