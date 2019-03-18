@@ -4,6 +4,9 @@
 #  Example script for running benchmark locally
 # ==============================================
 
+# Set common configs
+source common_configs.sh
+
 # Required configs
 export NUM_WORKERS="2"
 export NUM_PARAMETER_SERVERS="1"
@@ -16,5 +19,7 @@ export OPTIMIZER="momentum"
 export CROSS_REPLICA_SYNC="true"
 export BATCH_SIZE=64
 
-./run_with_env.sh run_benchmark_multiplex.sh
+# Run it
+LOG_FILE="$LOG_DIR/benchmark-$SUBMIT_TIMESTAMP.out"
+./run_with_env.sh run_benchmark_multiplex.sh 2>&1 | tee "$LOG_FILE"
 

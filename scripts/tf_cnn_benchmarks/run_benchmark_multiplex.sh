@@ -58,6 +58,7 @@ if [[ -n "$CUDA_VISIBLE_DEVICES" ]]; then
     echo "  CUDA_VISIBLE_DEVICES_PER_WORKER: ${CUDA_VISIBLE_DEVICES_PER_WORKER[*]}"
     exit 1
   fi
+  echo "CUDA_VISIBLE_DEVICES_PER_WORKER: ${CUDA_VISIBLE_DEVICES_PER_WORKER[*]}"
 fi
 
 # Note: The MPI integration in tensorflow assumes exactly one
@@ -83,15 +84,15 @@ function start_it() {
   # Don't give the parameter server GPUs
   if [[ "$index" < "$NUM_PARAMETER_SERVERS" ]]; then
     export CUDA_VISIBLE_DEVICES=""
-  else if [[ -n "$CUDA_VISIBLE_DEVICES_PER_WORKER" ]]; then
+  elif [[ -n "$CUDA_VISIBLE_DEVICES_PER_WORKER" ]]; then
     # Export the right set of devices for this worker
     worker_index="$((index-NUM_PARAMETER_SERVERS))"
     export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES_PER_WORKER[$worker_index]}"
-  fi
+  else
     # In the non-GPU case, just pass on the original CUDA_VISIBLE_DEVICES
     export CUDA_VISIBLE_DEVICES="$ORIGINAL_CUDA_VISIBLE_DEVICES"
   fi
-  LOG_FILE="$LOG_DIR/${SLURM_JOB_NAME}_${index}.out"
+  LOG_FILE="$LOG_DIR/${SLURM_JOB_NAME}-${index}.out"
   # Start the process
   echo "Starting tensorflow process on $SLURMD_NODENAME ($index), writing to $LOG_FILE"
   export SLURMD_PROC_INDEX="$index"
