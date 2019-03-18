@@ -14,7 +14,7 @@ export SUBMIT_TIMESTAMP="$(get_submit_timestamp)"
 
 # Optional configs
 export NUM_GPUS_PER_WORKER="1"
-export DATASET="synthetic"
+export DATASET="cifar10"
 export OPTIMIZER="momentum"
 export CROSS_REPLICA_SYNC="true"
 export BATCH_SIZE=64

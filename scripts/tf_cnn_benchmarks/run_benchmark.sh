@@ -42,6 +42,15 @@ SERVER_PROTOCOL="${SERVER_PROTOCOL:=grpc}"
 ENABLE_CHROME_TRACE="${ENABLE_CHROME_TRACE:=false}"
 XLA="${XLA:=false}"
 XLA_COMPILE="${XLA_COMPILE:=false}"
+
+# Stop condition configs
+if [[ -n "$NUM_BATCHES" ]] && [[ -n "$NUM_EPOCHS" ]]; then
+  echo "ERROR: NUM_BATCHES ($NUM_BATCHES) and NUM_EPOCHS ($NUM_EPOCHS) cannot both be set!"
+  exit 1
+elif [[ -z "$NUM_BATCHES" ]]; then
+  NUM_EPOCHS="${NUM_EPOCHS:=100}"
+fi
+
 # Checkpoint/eval configs
 SAVE_MODEL_SECS="${SAVE_MODEL_SECS:=600}"
 EVAL_INTERVAL_SECS="${EVAL_INTERVAL_SECS:=$SAVE_MODEL_SECS}"
@@ -102,6 +111,7 @@ echo -e "-----------------------------------------------------------------------
 printenv
 echo -e "==========================================================================\n"
 
+# TODO: add back NUM_EPOCHS (currently doesn't allow empty values)
 python3 tf_cnn_benchmarks.py\
   --num_gpus="$NUM_GPUS_PER_WORKER"\
   --device="$DEVICE"\
@@ -110,7 +120,7 @@ python3 tf_cnn_benchmarks.py\
   --batch_size="$BATCH_SIZE"\
   --model="$MODEL"\
   --print_training_accuracy=true\
-  --num_epochs=100\
+  --num_batches="$NUM_BATCHES"\
   --data_dir="$DATA_DIR"\
   --train_dir="$TRAIN_DIR"\
   --eval_dir="$EVAL_DIR"\

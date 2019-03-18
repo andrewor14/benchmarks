@@ -25,6 +25,9 @@ if [[ -z "$NUM_PARAMETER_SERVERS" ]]; then
   exit 1
 fi
 
+# Run configs
+RUN_TAG="${RUN_TAG:=benchmark}"
+
 # Decide which GPUs each worker gets, e.g. if CUDA_VISIBLE_DEVICES is "0,1,2,3" and
 # NUM_GPUS_PER_WORKER is 2, then CUDA_VISIBLE_DEVICES_PER_WORKER will be ("0,1", "2,3").
 # In this case, NUM_WORKERS must be 2 or the program will fail.
@@ -76,7 +79,7 @@ if [[ -z "$SLURMD_NODENAME" ]]; then
   export SLURM_JOB_NUM_NODES=1
   export SLURMD_NODENAME="localhost"
   export SLURM_JOB_ID="local"
-  export SLURM_JOB_NAME="benchmark-$SUBMIT_TIMESTAMP"
+  export SLURM_JOB_NAME="$RUN_TAG-$SUBMIT_TIMESTAMP"
 fi
 
 function start_it() {
