@@ -39,3 +39,8 @@ else
   exit 1
 fi
 
+# Helper function to get a human readable timestamp
+function get_submit_timestamp() {
+  date +%m_%d_%y_%s
+}
+

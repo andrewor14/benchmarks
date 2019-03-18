@@ -49,7 +49,11 @@ EVAL_DURING_TRAINING_EVERY_N_EPOCHS="${EVAL_DURING_TRAINING_EVERY_N_EPOCHS:=0}"
 EVAL="${EVAL:=false}"
 
 # Dataset-specific configs
-if [[ "$DATASET" = "cifar10" ]]; then
+if [[ "$DATASET" = "synthetic" ]]; then
+  DATA_DIR=""
+  MODEL="${MODEL:=resnet50_v1.5}"
+  USE_FP16="${USE_FP16:=false}"
+elif [[ "$DATASET" = "cifar10" ]]; then
   DATA_DIR="$CIFAR10_DATA_DIR"
   MODEL="${MODEL:=resnet56}"
   USE_FP16="${USE_FP16:=false}"
@@ -73,8 +77,8 @@ elif [[ "$DATASET" = "imagenet" ]]; then
 fi
 
 # Set working directories
-TRAIN_DIR="${TRAIN_DIR:=$BASE_TRAIN_DIR/$DATASET_$MODEL_$SUBMIT_TIMESTAMP}"
-EVAL_DIR="${EVAL_DIR:=$BASE_EVAL_DIR/$DATASET_$MODEL_$SUBMIT_TIMESTAMP}"
+TRAIN_DIR="${TRAIN_DIR:=$BASE_TRAIN_DIR/${DATASET}_${MODEL}_${SUBMIT_TIMESTAMP}}"
+EVAL_DIR="${EVAL_DIR:=$BASE_EVAL_DIR/${DATASET}_${MODEL}_${SUBMIT_TIMESTAMP}}"
 
 # Enable chrome trace by setting the trace file name
 if [[ "$ENABLE_CHROME_TRACE" == "true" ]]; then

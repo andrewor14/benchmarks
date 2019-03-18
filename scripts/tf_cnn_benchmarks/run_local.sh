@@ -10,11 +10,11 @@ source common_configs.sh
 # Required configs
 export NUM_WORKERS="2"
 export NUM_PARAMETER_SERVERS="1"
-export SUBMIT_TIMESTAMP=`date +%s`
+export SUBMIT_TIMESTAMP="$(get_submit_timestamp)"
 
 # Optional configs
 export NUM_GPUS_PER_WORKER="1"
-export DATASET="cifar10"
+export DATASET="synthetic"
 export OPTIMIZER="momentum"
 export CROSS_REPLICA_SYNC="true"
 export BATCH_SIZE=64

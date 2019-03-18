@@ -16,7 +16,7 @@ source common_configs.sh
 RUN_TAG="${RUN_TAG:=benchmark}"
 RUN_PATH="$BENCHMARK_DIR/run_with_env.sh"
 SCRIPT_NAME="${SCRIPT_NAME:=run_benchmark.sh}"
-export SUBMIT_TIMESTAMP=`date +%s`
+export SUBMIT_TIMESTAMP="$(get_submit_timestamp)"
 
 # Slurm specific configs
 # Note: we always launch 1 task per node; in multiplex mode, this task

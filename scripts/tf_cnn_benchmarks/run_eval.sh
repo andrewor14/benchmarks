@@ -4,6 +4,9 @@
 #  Example script for running evaluation on a previously trained model
 # =====================================================================
 
+# Set common configs
+source common_configs.sh
+
 # Modify this before running this script
 TRAIN_EXPERIMENT="resnet50_imagenet_1541584401"
 
@@ -24,7 +27,7 @@ if [[ "$LOCAL_EVAL" == "true" ]]; then
   # Note: single process local mode actually fails due to some assertion error
   # caused by how GRPC channels are initialized in tensorflow. Here we bypass
   # that error by running in multiplex mode instead.
-  export SUBMIT_TIMESTAMP=`date +%s`
+  export SUBMIT_TIMESTAMP="$(get_submit_timestamp)"
   export NUM_WORKERS="1"
   export NUM_PARAMETER_SERVERS="1"
   ./run_with_env.sh run_benchmark_multiplex.sh
