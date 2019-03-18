@@ -4,8 +4,9 @@
 #  Entry point for submitting a benchmark job through slurm
 #
 #  The caller should set the following environment variables:
-#  NUM_NODES, NUM_CPUS, NUM_GPUS, MEMORY, TIME_LIMIT_HOURS,
-#  SCRIPT_NAME, NUM_WORKERS, and NUM_PARAMETER_SERVERS
+#  NUM_CPUS_PER_NODE, NUM_GPUS_PER_NODE, MEMORY_PER_NODE,
+#  TIME_LIMIT_HOURS, SCRIPT_NAME, NUM_NODES, NUM_WORKERS,
+#  and NUM_PARAMETER_SERVERS
 # ============================================================
 
 # Set common configs
@@ -21,10 +22,19 @@ export SUBMIT_TIMESTAMP=`date +%s`
 # Note: we always launch 1 task per node; in multiplex mode, this task
 # launches multiple python processes, but there is still only one task.
 NUM_TASKS_PER_NODE="1"
-NUM_CPUS="${NUM_CPUS:=$DEFAULT_NUM_CPUS}"
-NUM_GPUS="${NUM_GPUS:=$DEFAULT_NUM_GPUS}"
-MEMORY="${MEMORY:=$DEFAULT_MEMORY}"
+NUM_CPUS_PER_NODE="${NUM_CPUS_PER_NODE:=$DEFAULT_NUM_CPUS_PER_NODE}"
+NUM_GPUS_PER_NODE="${NUM_GPUS_PER_NODE:=$DEFAULT_NUM_GPUS_PER_NODE}"
+MEMORY_PER_NODE="${MEMORY_PER_NODE:=$DEFAULT_MEMORY_PER_NODE}"
 TIME_LIMIT_HOURS="${TIME_LIMIT_HOURS:=144}"
+
+# In non-multiplex mode, NUM_GPUS_PER_NODE and NUM_GPUS_PER_WORKER should be the same.
+if [[ "$SCRIPT_NAME" == "run_benchmark.sh" ]] &&\
+    [[ -n "$NUM_GPUS_PER_WORKER" ]] &&\
+    [[ "$NUM_GPUS_PER_NODE" != "$NUM_GPUS_PER_WORKER" ]]; then
+  echo "ERROR: In non-multiplex mode, NUM_GPUS_PER_WORKER ($NUM_GPUS_PER_WORKER)"\
+    "must match NUM_GPUS_PER_NODE ($NUM_GPUS_PER_NODE)."
+  exit 1
+fi
 
 # Set NUM_WORKERS, NUM_PARAMETER_SERVERS and NUM_NODES
 # In non-multiplex mode, set these variables based on each other while
@@ -79,9 +89,9 @@ srun\
   --nodes="$NUM_NODES"\
   --ntasks="$NUM_NODES"\
   --ntasks-per-node="$NUM_TASKS_PER_NODE"\
-  --cpus-per-task="$NUM_CPUS"\
-  --mem="$MEMORY"\
-  --gres="gpu:$NUM_GPUS"\
+  --cpus-per-task="$NUM_CPUS_PER_NODE"\
+  --mem="$MEMORY_PER_NODE"\
+  --gres="gpu:$NUM_GPUS_PER_NODE"\
   --time="$TIME_LIMIT_HOURS:00:00"\
   --job-name="${RUN_TAG}-${SUBMIT_TIMESTAMP}"\
   --output="$LOG_DIR/slurm-%x-%j.out"\

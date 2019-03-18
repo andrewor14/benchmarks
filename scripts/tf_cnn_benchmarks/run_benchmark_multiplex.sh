@@ -25,10 +25,10 @@ if [[ -z "$NUM_PARAMETER_SERVERS" ]]; then
   exit 1
 fi
 
-# Decide which GPUs each worker gets, e.g. if CUDA_VISIBLE_DEVICES is "0,1,2,3"
-# and NUM_GPUS is 2, then CUDA_VISIBLE_DEVICES_PER_WORKER will be ("0,1", "2,3").
+# Decide which GPUs each worker gets, e.g. if CUDA_VISIBLE_DEVICES is "0,1,2,3" and
+# NUM_GPUS_PER_WORKER is 2, then CUDA_VISIBLE_DEVICES_PER_WORKER will be ("0,1", "2,3").
 # In this case, NUM_WORKERS must be 2 or the program will fail.
-export NUM_GPUS="${NUM_GPUS:=$DEFAULT_NUM_GPUS}"
+NUM_GPUS_PER_WORKER="${NUM_GPUS_PER_WORKER:=$DEFAULT_NUM_GPUS_PER_WORKER}"
 CUDA_VISIBLE_DEVICES_PER_WORKER=()
 ORIGINAL_CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES"
 if [[ -n "$CUDA_VISIBLE_DEVICES" ]]; then
@@ -42,7 +42,7 @@ if [[ -n "$CUDA_VISIBLE_DEVICES" ]]; then
       current_device_string="$current_device_string,$device"
     fi
     # Collect and reset current_device_string
-    if [[ "$((i % $NUM_GPUS))" = "0" ]]; then
+    if [[ "$((i % $NUM_GPUS_PER_WORKER))" = "0" ]]; then
       CUDA_VISIBLE_DEVICES_PER_WORKER+=("$current_device_string")
       current_device_string=""
     fi
@@ -52,8 +52,8 @@ if [[ -n "$CUDA_VISIBLE_DEVICES" ]]; then
   # TODO: also make sure each worker has the same number of GPUs
   if [[ "${#CUDA_VISIBLE_DEVICES_PER_WORKER[*]}" != "$NUM_WORKERS" ]]; then
     echo "ERROR: GPUs do not split evenly among workers:"
-    echo "  NUM_GPUS (per worker): $NUM_GPUS"
     echo "  NUM_WORKERS: $NUM_WORKERS"
+    echo "  NUM_GPUS_PER_WORKER: $NUM_GPUS_PER_WORKER"
     echo "  CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES"
     echo "  CUDA_VISIBLE_DEVICES_PER_WORKER: ${CUDA_VISIBLE_DEVICES_PER_WORKER[*]}"
     exit 1

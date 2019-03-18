@@ -20,8 +20,13 @@ if [[ -z "$NUM_WORKERS" ]]; then
   exit 1
 fi
 
+if [[ -n "$NUM_GPUS" ]]; then
+  echo "ERROR: Do not set NUM_GPUS. Set NUM_GPUS_PER_WORKER instead."
+  exit 1
+fi
+
 # General configs
-NUM_GPUS="${NUM_GPUS:=$DEFAULT_NUM_GPUS}"
+NUM_GPUS_PER_WORKER="${NUM_GPUS_PER_WORKER:=$DEFAULT_NUM_GPUS_PER_WORKER}"
 DEVICE="${DEVICE:=gpu}"
 DATA_FORMAT="${DATA_FORMAT:=NCHW}"
 OPTIMIZER="${OPTIMIZER:=momentum}"
@@ -59,7 +64,7 @@ elif [[ "$DATASET" = "imagenet" ]]; then
       echo "ERROR: USE_FACEBOOK_BASE_LEARNING_RATE is not compatible with RESNET_BASE_LEARNING_RATE"
       exit 1
     fi
-    RESNET_BASE_LEARNING_RATE="$(($BATCH_SIZE * $NUM_WORKERS * $NUM_GPUS / 256))"
+    RESNET_BASE_LEARNING_RATE="$(($BATCH_SIZE * $NUM_WORKERS * $NUM_GPUS_PER_WORKER / 256))"
     export RESNET_BASE_LEARNING_RATE="0.$RESNET_BASE_LEARNING_RATE" # divide by 10
   fi
   if [[ -n "$RESNET_BASE_LEARNING_RATE" ]]; then
@@ -93,8 +98,8 @@ echo -e "-----------------------------------------------------------------------
 printenv
 echo -e "==========================================================================\n"
 
-python tf_cnn_benchmarks.py\
-  --num_gpus="$NUM_GPUS"\
+python3 tf_cnn_benchmarks.py\
+  --num_gpus="$NUM_GPUS_PER_WORKER"\
   --device="$DEVICE"\
   --local_parameter_device="$DEVICE"\
   --data_format="$DATA_FORMAT"\
