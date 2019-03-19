@@ -84,9 +84,13 @@ GraphInfo = namedtuple(  # pylint: disable=invalid-name
         # Group of ops that perform per-device initialization work
         'local_var_init_op_group',
         # Op to produce summaries
-        'summary_op'
+        'summary_op',
+        # Op to signal to parameter servers that a worker is done
+        'terminate_op'
     ])
 
+# Add default values to GraphInfo to extend it more easily
+GraphInfo.__new__.__defaults__ = (None,) * len(GraphInfo._fields)
 
 # InputProcessingInfo contains various sources of inputs which will be later fed
 # into the model. If synthetic data is used, all four fields are None.
@@ -1666,6 +1670,21 @@ class BenchmarkCNN(object):
       # equivalent, like num_batches and num_eval_batches.
       self.params = remove_param_fields(self.params, {'eval'})
 
+    self.graph = tf.Graph()
+
+    # Build queues for terminating parameter servers
+    # At the end, each parameter server tries to dequeue N = num_workers tokens from its queue.
+    # After each worker is done, it will enqueue 1 token to each server's terminating queue.
+    self.terminating_queues = None
+    with self.graph.as_default():
+      if self.params.variable_update == 'parameter_server':
+        self.terminating_queues = []
+        for device in self.sync_queue_devices:
+          with tf.device(device):
+            self.terminating_queues.append(tf.FIFOQueue(
+              self.num_workers, [tf.bool], shapes=[[]],
+              shared_name='terminating_queue_%s' % device))
+
   @contextlib.contextmanager
   def _do_eval(self):
     """Context manager to switches BenchmarkCNN to eval mode.
@@ -1831,7 +1850,7 @@ class BenchmarkCNN(object):
     """
     if self.params.job_name == 'ps':
       log_fn('Running parameter server %s' % self.task_index)
-      self.cluster_manager.join_server()
+      self.cluster_manager.join_server(self.terminating_queues, self.graph)
       return {}
 
     # For distributed_all_reduce with multiple workers, drive
@@ -2032,7 +2051,7 @@ class BenchmarkCNN(object):
       Dictionary containing training statistics (num_workers, num_steps,
       average_wall_time, images_per_sec).
     """
-    graph = tf.Graph()
+    graph = self.graph
     with graph.as_default():
       build_graph_start = time.time()
       build_result = self._build_graph()
@@ -2118,6 +2137,9 @@ class BenchmarkCNN(object):
                                        name='local_var_init_op_group')
     summary_op = tf.summary.merge_all()
 
+    terminate_op = tf.group(*[q.enqueue(tf.constant(True)) for q in self.terminating_queues],
+                            name='terminate_op_group')
+
     return GraphInfo(
         input_producer_op=input_producer_op,
         enqueue_ops=enqueue_ops,
@@ -2125,7 +2147,8 @@ class BenchmarkCNN(object):
         execution_barrier=execution_barrier,
         global_step=global_step,
         local_var_init_op_group=local_var_init_op_group,
-        summary_op=summary_op)
+        summary_op=summary_op,
+        terminate_op=terminate_op)
 
   def _benchmark_graph(self, graph_info, eval_graph_info):
     """Benchmark the training graph.
@@ -2497,6 +2520,10 @@ class BenchmarkCNN(object):
     }
     if last_average_loss is not None:
       stats['last_average_loss'] = last_average_loss
+
+    # Signal to the parameter servers that this worker is done
+    sess.run(graph_info.terminate_op)
+
     return stats
 
   def _should_eval_during_training(self, step):
@@ -2629,7 +2656,8 @@ class BenchmarkCNN(object):
             graph_info.local_var_init_op_group),
         fetches=_get_tensors_or_ops(graph_info.fetches),
         global_step=updated_global_step,
-        summary_op=None)
+        summary_op=None,
+        terminate_op=_get_tensors_or_ops(graph_info.terminate_op))
     return (updated_graph, updated_graph_info)
 
   def _build_input_processing(self, shift_ratio=0):
