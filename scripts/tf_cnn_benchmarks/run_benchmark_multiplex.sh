@@ -108,5 +108,16 @@ for i in `seq 0 $((SLURM_JOB_NUM_PROCS_PER_NODE - 1))`; do
   start_it $i
 done
 
-wait
+if [[ "$FATE_SHARING" == "true" ]]; then
+  # In parameter server mode, the parameter servers and some workers often do not exit.
+  # As such, we need a way to terminate all children tensorflow processes after we think
+  # the training/eval job is done. Here we fate share all such processes such that the
+  # first one (worker) to visit signals the end of all other ones.
+  wait -n
+  # TODO: also make sure the processes we kill here are in fact our descendants
+  ps aux | grep "$(whoami)" | grep tf_cnn_benchmarks | awk '{print $2}' | xargs kill -9
+else
+  # Otherwise, wait for all children processes to finish
+  wait
+fi
 

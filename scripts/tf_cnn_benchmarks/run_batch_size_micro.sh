@@ -19,6 +19,7 @@ export MODEL="resnet50_v1.5"
 export OPTIMIZER="momentum"
 export CROSS_REPLICA_SYNC="true"
 export NUM_BATCHES="100"
+export FATE_SHARING="true"
 
 # Run it
 for b in 1 2 4 8 16 32 64 128 256 512 1024; do
