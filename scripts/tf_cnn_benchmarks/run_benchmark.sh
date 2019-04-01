@@ -43,6 +43,11 @@ ENABLE_CHROME_TRACE="${ENABLE_CHROME_TRACE:=false}"
 XLA="${XLA:=false}"
 XLA_COMPILE="${XLA_COMPILE:=false}"
 
+# Note: the tensorflow benchmark code assumes --num_gpus to always be at least 1
+if [[ "$NUM_GPUS_PER_WORKER" == "0" ]]; then
+  NUM_GPUS_PER_WORKER="1"
+fi
+
 # Stop condition configs
 if [[ -n "$NUM_BATCHES" ]] && [[ -n "$NUM_EPOCHS" ]]; then
   echo "ERROR: NUM_BATCHES ($NUM_BATCHES) and NUM_EPOCHS ($NUM_EPOCHS) cannot both be set!"
@@ -111,8 +116,8 @@ echo -e "-----------------------------------------------------------------------
 printenv
 echo -e "==========================================================================\n"
 
-# TODO: add back NUM_EPOCHS (currently doesn't allow empty values)
-python3 tf_cnn_benchmarks.py\
+# TODO: add back NUM_BATCHES (currently doesn't allow empty values)
+"$PYTHON_COMMAND" tf_cnn_benchmarks.py\
   --num_gpus="$NUM_GPUS_PER_WORKER"\
   --device="$DEVICE"\
   --local_parameter_device="$DEVICE"\
@@ -120,7 +125,7 @@ python3 tf_cnn_benchmarks.py\
   --batch_size="$BATCH_SIZE"\
   --model="$MODEL"\
   --print_training_accuracy=true\
-  --num_batches="$NUM_BATCHES"\
+  --num_epochs="$NUM_EPOCHS"\
   --data_dir="$DATA_DIR"\
   --train_dir="$TRAIN_DIR"\
   --eval_dir="$EVAL_DIR"\

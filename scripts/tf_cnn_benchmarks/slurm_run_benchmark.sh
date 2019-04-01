@@ -85,7 +85,7 @@ if [[ "$ENVIRONMENT" = "tigergpu" ]]; then
   module load openmpi/gcc/3.0.0/64
 fi
 
-srun\
+sbatch\
   --nodes="$NUM_NODES"\
   --ntasks="$NUM_NODES"\
   --ntasks-per-node="$NUM_TASKS_PER_NODE"\
@@ -94,9 +94,8 @@ srun\
   --gres="gpu:$NUM_GPUS_PER_NODE"\
   --time="$TIME_LIMIT_HOURS:00:00"\
   --job-name="${RUN_TAG}-${SUBMIT_TIMESTAMP}"\
-  --output="$LOG_DIR/slurm-%x-%j.out"\
   --mail-type="begin"\
   --mail-type="end"\
   --mail-user="$EMAIL"\
-  --output="$LOG_DIR/slurm-%x-%j-%n.out" "$RUN_PATH" "$SCRIPT_NAME"
+  --wrap "srun --output=$LOG_DIR/slurm-%x-%j-%n.out $RUN_PATH $SCRIPT_NAME"
 

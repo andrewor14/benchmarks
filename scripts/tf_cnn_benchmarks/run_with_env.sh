@@ -26,7 +26,7 @@ fi
 #pip install --user "$TF_PKG"
 
 if [[ "$BYPASS_GPU_TEST" != "true" ]]; then
-  python3 test_gpu_support.py
+  "$PYTHON_COMMAND" test_gpu_support.py
   if [[ "$?" -ne 0 ]]; then
     echo "GPU test failed. Exiting."
     exit 1
