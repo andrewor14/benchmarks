@@ -49,11 +49,14 @@ if [[ "$NUM_GPUS_PER_WORKER" == "0" ]]; then
 fi
 
 # Stop condition configs
-if [[ -n "$NUM_BATCHES" ]] && [[ -n "$NUM_EPOCHS" ]]; then
+if [[ -z "$NUM_BATCHES" ]]; then
+  NUM_EPOCHS="${NUM_EPOCHS:=100}"
+  NUM_BATCHES="0"
+elif [[ -z "$NUM_EPOCHS" ]]; then
+  NUM_EPOCHS="0"
+else
   echo "ERROR: NUM_BATCHES ($NUM_BATCHES) and NUM_EPOCHS ($NUM_EPOCHS) cannot both be set!"
   exit 1
-elif [[ -z "$NUM_BATCHES" ]]; then
-  NUM_EPOCHS="${NUM_EPOCHS:=100}"
 fi
 
 # Checkpoint/eval configs
@@ -116,7 +119,6 @@ echo -e "-----------------------------------------------------------------------
 printenv
 echo -e "==========================================================================\n"
 
-# TODO: add back NUM_BATCHES (currently doesn't allow empty values)
 "$PYTHON_COMMAND" tf_cnn_benchmarks.py\
   --num_gpus="$NUM_GPUS_PER_WORKER"\
   --device="$DEVICE"\
@@ -126,6 +128,7 @@ echo -e "=======================================================================
   --model="$MODEL"\
   --print_training_accuracy=true\
   --num_epochs="$NUM_EPOCHS"\
+  --num_batches="$NUM_BATCHES"\
   --data_dir="$DATA_DIR"\
   --train_dir="$TRAIN_DIR"\
   --eval_dir="$EVAL_DIR"\
