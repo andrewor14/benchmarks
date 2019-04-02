@@ -9,6 +9,10 @@ export SLURM_EMAIL="andrewor@princeton.edu"
 export DEFAULT_NUM_NODES="4"
 export DEFAULT_NUM_PARAMETER_SERVERS="1"
 
+if [[ "$ENVIRONMENT" = "tiger" ]]; then
+  export ENVIRONMENT="tigergpu"
+fi
+
 if [[ "$ENVIRONMENT" = "tigergpu" ]]; then
   export LOG_DIR="/home/andrewor/logs"
   export BENCHMARK_DIR="/home/andrewor/benchmarks/scripts/tf_cnn_benchmarks"
