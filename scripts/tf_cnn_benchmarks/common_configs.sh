@@ -40,7 +40,7 @@ elif [[ "$ENVIRONMENT" == "ns" ]]; then
   export LOG_DIR="/home/andrewor/logs"
   export BENCHMARK_DIR="/home/andrewor/benchmarks/scripts/tf_cnn_benchmarks"
   export IMAGENET_DATA_DIR="" # TODO: fill this in
-  export CIFAR10_DATA_DIR="" # TODO: fill this in
+  export CIFAR10_DATA_DIR="/home/andrewor/dataset/cifar10/cifar-10-batches-py"
   export BASE_TRAIN_DIR="/home/andrewor/train_data"
   export BASE_EVAL_DIR="/home/andrewor/eval_data"
   export TF_PKG="" # TODO: fill this in
