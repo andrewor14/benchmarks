@@ -22,7 +22,7 @@ SLURM_JOB_NUM_PROCS_PER_NODE = "SLURM_JOB_NUM_PROCS_PER_NODE"
 def running_through_slurm():
   return SLURM_JOB_NODELIST in os.environ and SLURMD_NODENAME in os.environ
 
-def tf_config_from_slurm(ps_number, port_number=2222):
+def tf_config_from_slurm(num_ps, port_number=2222):
   """
   Creates configuration for a distributed tensorflow session
   from environment variables  provided by the Slurm cluster
@@ -31,7 +31,7 @@ def tf_config_from_slurm(ps_number, port_number=2222):
   Note: This assumes that nodes are either ps or workers,
   and so does not work with the estimator API.
 
-  @param: ps_number number of parameter servers to run
+  @param: num_ps number of parameter servers to run
   @param: port_number port number to be used for communication
   @return: a tuple containing cluster with fields cluster_spec,
            task_name and task_id
@@ -72,8 +72,8 @@ def tf_config_from_slurm(ps_number, port_number=2222):
   node_list = new_node_list
 
   # Assign parameter servers and workers
-  ps_nodes = [node for i, node in enumerate(node_list) if i < ps_number]
-  worker_nodes = [node for i, node in enumerate(node_list) if i >= ps_number]
+  ps_nodes = [node for i, node in enumerate(node_list) if i < num_ps]
+  worker_nodes = [node for i, node in enumerate(node_list) if i >= num_ps]
 
   if node_name in ps_nodes:
     my_job_name = "ps"
@@ -84,7 +84,10 @@ def tf_config_from_slurm(ps_number, port_number=2222):
   else:
     raise ValueError("Node name ({}) is neither a ps nor a worker!".format(node_name))
 
-  cluster = {"ps": ps_nodes, "worker": worker_nodes}
+  if num_ps > 0:
+    cluster = {"ps": ps_nodes, "worker": worker_nodes}
+  else:
+    cluster = {"worker": worker_nodes}
 
   return cluster, my_job_name, my_task_index
 
