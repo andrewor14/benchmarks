@@ -85,6 +85,13 @@ if [[ "$ENVIRONMENT" = "tigergpu" ]]; then
   module load openmpi/gcc/3.0.0/64
 fi
 
+# Set run command, either 'srun' or 'mpirun'
+if [[ "$SERVER_PROTOCOL" == *"mpi"* ]]; then
+  RUN_COMMAND="mpirun --output-filename $LOG_DIR/mpi-${RUN_TAG}-${SUBMIT_TIMESTAMP} $RUN_PATH $SCRIPT_NAME"
+else
+  RUN_COMMAND="srun --output=$LOG_DIR/slurm-%x-%j-%n.out $RUN_PATH $SCRIPT_NAME"
+fi
+
 sbatch\
   --nodes="$NUM_NODES"\
   --ntasks="$NUM_NODES"\
@@ -97,5 +104,5 @@ sbatch\
   --mail-type="begin"\
   --mail-type="end"\
   --mail-user="$EMAIL"\
-  --wrap "srun --output=$LOG_DIR/slurm-%x-%j-%n.out $RUN_PATH $SCRIPT_NAME"
+  --wrap "$RUN_COMMAND"
 
