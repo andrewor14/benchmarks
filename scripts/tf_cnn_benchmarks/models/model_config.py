@@ -44,6 +44,7 @@ _model_name_to_imagenet_model = {
     'overfeat': overfeat_model.OverfeatModel,
     'alexnet': alexnet_model.AlexnetModel,
     'trivial': trivial_model.TrivialModel,
+    'andrew_trivial': trivial_model.AndrewTrivialModel,
     'inception3': inception_model.Inceptionv3Model,
     'inception4': inception_model.Inceptionv4Model,
     'official_resnet18_v2':

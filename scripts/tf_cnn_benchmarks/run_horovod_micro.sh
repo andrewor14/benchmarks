@@ -16,15 +16,15 @@ export FATE_SHARING="true"
 
 # Optional configs
 export VARIABLE_UPDATE="horovod"
-export DATASET="cifar10"
-export MODEL="trivial"
+export DATASET="synthetic"
+export MODEL="andrew_trivial"
 export OPTIMIZER="momentum"
 export CROSS_REPLICA_SYNC="true"
 export BATCH_SIZE=64
 export SERVER_PROTOCOL="grpc+mpi"
 
 # Run it
-for num_workers in 2 4 8 16 32 64; do
+for num_workers in 2 4 8 16 32 48 60; do
   export NUM_WORKERS="$num_workers"
   export RUN_TAG="horovod_${num_workers}workers"
   ./slurm_run_benchmark.sh

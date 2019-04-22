@@ -41,3 +41,18 @@ class TrivialCifar10Model(model.CNNModel):
     cnn.reshape([-1, 32 * 32 * 3])
     cnn.affine(1)
     cnn.affine(4096)
+
+class AndrewTrivialModel(model.CNNModel):
+  """Trivial model configuration."""
+
+  def __init__(self, params=None):
+    super(TrivialModel, self).__init__(
+        'trivial', 224 + 3, 32, 0.005, params=params)
+
+  def add_inference(self, cnn):
+    cnn.reshape([-1, 227 * 227 * 3])
+    # Target model size = 104MB to match ResNet-50
+    # (104 * 1024 * 1024 / 4 - 4096) / (227 * 227 * 3 + 4096 + 1) = 172
+    cnn.affine(172)
+    cnn.affine(4096)
+
