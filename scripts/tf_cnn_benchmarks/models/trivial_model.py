@@ -46,8 +46,8 @@ class AndrewTrivialModel(model.CNNModel):
   """Trivial model configuration."""
 
   def __init__(self, params=None):
-    super(TrivialModel, self).__init__(
-        'trivial', 224 + 3, 32, 0.005, params=params)
+    super(AndrewTrivialModel, self).__init__(
+        'andrew_trivial', 224 + 3, 32, 0.005, params=params)
 
   def add_inference(self, cnn):
     cnn.reshape([-1, 227 * 227 * 3])
