@@ -65,6 +65,6 @@ fi
 
 # Helper function to get a human readable timestamp
 function get_submit_timestamp() {
-  date +%m_%d_%y_%s
+  date +%m_%d_%y_%s%3N
 }
 
