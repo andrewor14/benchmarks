@@ -94,13 +94,20 @@ elif [[ "$DATASET" = "imagenet" ]]; then
   fi
 fi
 
-# Set working directories
+# Set up working directories
 TRAIN_DIR="${TRAIN_DIR:=$BASE_TRAIN_DIR/${DATASET}_${MODEL}_${JOB_NAME}}"
 EVAL_DIR="${EVAL_DIR:=$BASE_EVAL_DIR/${DATASET}_${MODEL}_${JOB_NAME}}"
+mkdir -p "$TRAIN_DIR"
+mkdir -p "$EVAL_DIR"
 
 # Enable chrome trace by setting the trace file name
 if [[ "$ENABLE_CHROME_TRACE" == "true" ]]; then
   TRACE_FILE="$TRAIN_DIR/chrome.trace"
+fi
+
+# Enable horovod trace by default
+if [[ "$VARIABLE_UPDATE" == "horovod" ]]; then
+  export HOROVOD_TIMELINE="$TRAIN_DIR/horovod_timeline.json"
 fi
 
 echo "Running this commit: $(git log --oneline | head -n 1)"
@@ -119,11 +126,6 @@ echo -e "My environment variables:"
 echo -e "--------------------------------------------------------------------------"
 printenv
 echo -e "==========================================================================\n"
-
-if [[ "$VARIABLE_UPDATE" == "horovod" ]]; then
-  export HOROVOD_TIMELINE="$TRAIN_DIR/horovod_timeline.json"
-  export HOROVOD_TIMELINE_MARK_CYCLES=1
-fi
 
 "$PYTHON_COMMAND" tf_cnn_benchmarks.py\
   --num_gpus="$NUM_GPUS_PER_WORKER"\
