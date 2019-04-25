@@ -25,9 +25,10 @@ export FATE_SHARING="true"
 # Run it
 for b in 1 2 4 8 16 32 64 128 256 512 1024; do
   export BATCH_SIZE="$b"
-  export RUN_TAG="batch_size_micro_$b"
-  export SUBMIT_TIMESTAMP="$(get_submit_timestamp)"
-  LOG_FILE="$LOG_DIR/$RUN_TAG-$SUBMIT_TIMESTAMP.out"
+  RUN_TAG="batch_size_micro_$b"
+  SUBMIT_TIMESTAMP="$(get_submit_timestamp)"
+  export JOB_NAME="${RUN_TAG}-${SUBMIT_TIMESTAMP}"
+  LOG_FILE="$LOG_DIR/$JOB_NAME.out"
   echo "Running batch size $b, logging to $LOG_FILE"
   ./run_with_env.sh run_benchmark_multiplex.sh > "$LOG_FILE" 2>&1
 done

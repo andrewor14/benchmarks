@@ -16,7 +16,8 @@ source common_configs.sh
 RUN_TAG="${RUN_TAG:=benchmark}"
 RUN_PATH="$BENCHMARK_DIR/run_with_env.sh"
 SCRIPT_NAME="${SCRIPT_NAME:=run_benchmark.sh}"
-export SUBMIT_TIMESTAMP="$(get_submit_timestamp)"
+SUBMIT_TIMESTAMP="$(get_submit_timestamp)"
+export JOB_NAME="${RUN_TAG}-${SUBMIT_TIMESTAMP}"
 
 # Slurm specific configs
 # Note: we always launch 1 task per node; in multiplex mode, this task
@@ -87,7 +88,7 @@ fi
 
 # Set run command, either 'srun' or 'mpirun'
 if [[ "$SERVER_PROTOCOL" == *"mpi"* ]]; then
-  RUN_COMMAND="mpirun --output-filename $LOG_DIR/mpi-${RUN_TAG}-${SUBMIT_TIMESTAMP} $RUN_PATH $SCRIPT_NAME"
+  RUN_COMMAND="mpirun --output-filename $LOG_DIR/mpi-$JOB_NAME $RUN_PATH $SCRIPT_NAME"
 else
   RUN_COMMAND="srun --output=$LOG_DIR/slurm-%x-%j-%n.out $RUN_PATH $SCRIPT_NAME"
 fi
@@ -100,7 +101,7 @@ sbatch\
   --mem="$MEMORY_PER_NODE"\
   --gres="gpu:$NUM_GPUS_PER_NODE"\
   --time="$TIME_LIMIT_HOURS:00:00"\
-  --job-name="${RUN_TAG}-${SUBMIT_TIMESTAMP}"\
+  --job-name="$JOB_NAME"\
   --mail-type="begin"\
   --mail-type="end"\
   --mail-user="$EMAIL"\

@@ -4,14 +4,14 @@
 #  A script to run multiple processes on a single node
 #
 #  This expects the following environment variables to be set:
-#  SUBMIT_TIMESTAMP, NUM_WORKERS, and NUM_PARAMETER_SERVERS
+#  JOB_NAME, NUM_WORKERS, and NUM_PARAMETER_SERVERS
 # =============================================================
 
 # Set common configs
 source common_configs.sh
 
-if [[ -z "$SUBMIT_TIMESTAMP" ]]; then
-  echo "ERROR: SUBMIT_TIMESTAMP must be set."
+if [[ -z "$JOB_NAME" ]]; then
+  echo "ERROR: JOB_NAME must be set."
   exit 1
 fi
 
@@ -24,9 +24,6 @@ if [[ -z "$NUM_PARAMETER_SERVERS" ]]; then
   echo "ERROR: NUM_PARAMETER_SERVERS must be set."
   exit 1
 fi
-
-# Run configs
-RUN_TAG="${RUN_TAG:=benchmark}"
 
 # Decide which GPUs each worker gets, e.g. if CUDA_VISIBLE_DEVICES is "0,1,2,3" and
 # NUM_GPUS_PER_WORKER is 2, then CUDA_VISIBLE_DEVICES_PER_WORKER will be ("0,1", "2,3").
@@ -79,7 +76,7 @@ if [[ -z "$SLURMD_NODENAME" ]]; then
   export SLURM_JOB_NUM_NODES=1
   export SLURMD_NODENAME="localhost"
   export SLURM_JOB_ID="local"
-  export SLURM_JOB_NAME="$RUN_TAG-$SUBMIT_TIMESTAMP"
+  export SLURM_JOB_NAME="$JOB_NAME"
 fi
 
 function start_it() {
@@ -99,7 +96,7 @@ function start_it() {
   # Start the process
   echo "Starting tensorflow process on $SLURMD_NODENAME ($index), writing to $LOG_FILE"
   export SLURMD_PROC_INDEX="$index"
-  ./run_benchmark.sh "$SUBMIT_TIMESTAMP" > "$LOG_FILE" 2>&1 &
+  ./run_benchmark.sh "$JOB_NAME" > "$LOG_FILE" 2>&1 &
 }
 
 # Actually start everything

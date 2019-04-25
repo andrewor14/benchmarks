@@ -27,7 +27,8 @@ if [[ "$LOCAL_EVAL" == "true" ]]; then
   # Note: single process local mode actually fails due to some assertion error
   # caused by how GRPC channels are initialized in tensorflow. Here we bypass
   # that error by running in multiplex mode instead.
-  export SUBMIT_TIMESTAMP="$(get_submit_timestamp)"
+  SUBMIT_TIMESTAMP="$(get_submit_timestamp)"
+  export JOB_NAME="eval-${TRAIN_EXPERIMENT}-${SUBMIT_TIMESTAMP}"
   export NUM_WORKERS="1"
   export NUM_PARAMETER_SERVERS="1"
   ./run_with_env.sh run_benchmark_multiplex.sh
