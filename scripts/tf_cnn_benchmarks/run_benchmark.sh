@@ -40,6 +40,7 @@ VARIABLE_UPDATE="${VARIABLE_UPDATE:=parameter_server}"
 LOCAL_PARAMETER_DEVICE="${LOCAL_PARAMETER_DEVICE:=gpu}"
 SERVER_PROTOCOL="${SERVER_PROTOCOL:=grpc}"
 ENABLE_CHROME_TRACE="${ENABLE_CHROME_TRACE:=false}"
+DISPLAY_EVERY="${DISPLAY_EVERY:=10}"
 XLA="${XLA:=false}"
 XLA_COMPILE="${XLA_COMPILE:=false}"
 
@@ -127,6 +128,7 @@ echo -e "=======================================================================
   --batch_size="$BATCH_SIZE"\
   --model="$MODEL"\
   --print_training_accuracy=true\
+  --display_every="$DISPLAY_EVERY"\
   --num_epochs="$NUM_EPOCHS"\
   --num_batches="$NUM_BATCHES"\
   --data_dir="$DATA_DIR"\

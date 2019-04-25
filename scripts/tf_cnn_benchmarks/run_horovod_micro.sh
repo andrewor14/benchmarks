@@ -22,6 +22,7 @@ export OPTIMIZER="momentum"
 export CROSS_REPLICA_SYNC="true"
 export BATCH_SIZE=64
 export SERVER_PROTOCOL="grpc+mpi"
+export DISPLAY_EVERY=1
 
 # Run it
 for num_workers in 2 4 8 16 32 48 60; do
