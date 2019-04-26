@@ -96,6 +96,7 @@ function start_it() {
   # Start the process
   echo "Starting tensorflow process on $SLURMD_NODENAME ($index), writing to $LOG_FILE"
   export SLURMD_PROC_INDEX="$index"
+  export SLURM_NODEID="$index"
   ./run_benchmark.sh "$JOB_NAME" > "$LOG_FILE" 2>&1 &
 }
 

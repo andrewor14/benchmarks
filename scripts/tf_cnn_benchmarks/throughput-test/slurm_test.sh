@@ -1,11 +1,12 @@
 #!/bin/bash
 
 # Set common configs
-source common_configs.sh
+source ../common_configs.sh
 
 # Run configs
 RUN_TAG="${RUN_TAG:=test}"
 SUBMIT_TIMESTAMP="$(get_submit_timestamp)"
+NUM_NODES="${NUM_NODES:=4}"
 NUM_TASKS_PER_NODE="1"
 NUM_CPUS_PER_NODE="${NUM_CPUS_PER_NODE:=$DEFAULT_NUM_CPUS_PER_NODE}"
 NUM_GPUS_PER_NODE="${NUM_GPUS_PER_NODE:=$DEFAULT_NUM_GPUS_PER_NODE}"

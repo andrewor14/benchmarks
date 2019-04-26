@@ -100,9 +100,14 @@ EVAL_DIR="${EVAL_DIR:=$BASE_EVAL_DIR/${DATASET}_${MODEL}_${JOB_NAME}}"
 mkdir -p "$TRAIN_DIR"
 mkdir -p "$EVAL_DIR"
 
-# Enable chrome trace by setting the trace file name
+# Optionally enable chrome trace
 if [[ "$ENABLE_CHROME_TRACE" == "true" ]]; then
   TRACE_FILE="$TRAIN_DIR/chrome.trace"
+fi
+
+# Optionally enable network trace
+if [[ "$ENABLE_NETWORK_TRACE" == "true" ]]; then
+  ./collect_network_trace.sh &
 fi
 
 # Enable horovod trace by default
@@ -157,4 +162,9 @@ echo -e "=======================================================================
   --server_protocol="$SERVER_PROTOCOL"\
   --xla="$XLA"\
   --xla_compile="$XLA_COMPILE"
+
+# Kill any lingering network measurement processes
+if [[ "$ENABLE_NETWORK_TRACE" == "true" ]]; then
+  ps aux | grep "collect_network_trace.sh" | awk '{print $2}' | xargs kill -9
+fi
 
