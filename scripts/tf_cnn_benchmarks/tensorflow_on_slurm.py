@@ -9,6 +9,7 @@ from __future__ import print_function
 
 import os
 import re
+import sys
 
 
 SLURM_JOB_NODELIST = "SLURM_JOB_NODELIST"
@@ -164,4 +165,13 @@ def _expand_node_list(node_list):
         else:
           raise ValueError("Unexpected pattern '%s' in node list '%s'" % (group, node_list))
   return nodes
+
+if __name__ == "__main__":
+  import sys
+  args = sys.argv
+  if len(args) != 2:
+    print("Usage: tensorflow_on_slurm.py [node list]")
+    sys.exit(1)
+  for node in _expand_node_list(args[1]):
+    print(node)
 

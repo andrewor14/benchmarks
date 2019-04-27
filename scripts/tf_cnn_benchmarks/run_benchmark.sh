@@ -165,6 +165,6 @@ echo -e "=======================================================================
 
 # Kill any lingering network measurement processes
 if [[ "$ENABLE_NETWORK_TRACE" == "true" ]]; then
-  ps aux | grep "collect_network_trace.sh" | awk '{print $2}' | xargs kill -9
+  ps aux | grep "collect_network_trace.sh\|ping" | awk '{print $2}' | xargs kill -9
 fi
 
