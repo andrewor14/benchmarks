@@ -15,6 +15,9 @@ if [[ "$SERVER_PROTOCOL" == *"mpi"* ]]; then
   # Note: for MPI, we can't rely on SLURM_NODEID anymore because
   # sometimes slurm and MPI don't agree on the number of processes
   NODE_INDEX="$OMPI_COMM_WORLD_RANK"
+  if [[ "$SLURM_JOB_NUM_NODES" -gt "10" ]]; then
+    NODE_INDEX="$(printf %02d $NODE_INDEX)"
+  fi
   TRACE_FILE="$LOG_DIR/mpi-$JOB_NAME/1/rank.$NODE_INDEX/eth.txt"
 else
   NODE_INDEX="$SLURM_NODEID"
