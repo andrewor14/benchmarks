@@ -88,9 +88,9 @@ fi
 
 # Set run command, either 'srun' or 'mpirun'
 if [[ "$SERVER_PROTOCOL" == *"mpi"* ]]; then
-  RUN_COMMAND="mpirun --output-filename $LOG_DIR/mpi-$JOB_NAME $RUN_PATH $SCRIPT_NAME"
+  RUN_COMMAND="mpirun --output-filename $LOG_DIR/$JOB_NAME $RUN_PATH $SCRIPT_NAME"
 else
-  RUN_COMMAND="srun --output=$LOG_DIR/slurm-%x-%j-%n.out $RUN_PATH $SCRIPT_NAME"
+  RUN_COMMAND="srun --output=$LOG_DIR/$JOB_NAME.out $RUN_PATH $SCRIPT_NAME"
 fi
 
 sbatch\

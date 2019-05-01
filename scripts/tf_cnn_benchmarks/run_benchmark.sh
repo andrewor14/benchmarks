@@ -95,8 +95,8 @@ elif [[ "$DATASET" = "imagenet" ]]; then
 fi
 
 # Set up working directories
-TRAIN_DIR="${TRAIN_DIR:=$BASE_TRAIN_DIR/${DATASET}_${MODEL}_${JOB_NAME}}"
-EVAL_DIR="${EVAL_DIR:=$BASE_EVAL_DIR/${DATASET}_${MODEL}_${JOB_NAME}}"
+TRAIN_DIR="${TRAIN_DIR:=$BASE_TRAIN_DIR/$JOB_NAME}"
+EVAL_DIR="${EVAL_DIR:=$BASE_EVAL_DIR/$JOB_NAME}"
 mkdir -p "$TRAIN_DIR"
 mkdir -p "$EVAL_DIR"
 
