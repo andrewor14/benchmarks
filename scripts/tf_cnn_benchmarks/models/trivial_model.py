@@ -56,3 +56,14 @@ class AndrewTrivialModel(model.CNNModel):
     cnn.affine(172)
     cnn.affine(4096)
 
+class TinyCifar10Model(model.CNNModel):
+  """Trivial cifar10 model configuration."""
+
+  def __init__(self, params=None):
+    super(TinyCifar10Model, self).__init__(
+        'tiny_trivial', 32, 32, 0.005, params=params)
+
+  def add_inference(self, cnn):
+    cnn.reshape([-1, 32 * 32 * 3])
+    cnn.affine(1)
+

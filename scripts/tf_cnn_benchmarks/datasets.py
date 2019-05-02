@@ -80,7 +80,11 @@ class Dataset(object):
     return self._queue_runner_required
 
   def use_synthetic_gpu_inputs(self):
-    return not self.data_dir
+    disable_input_preprocessing = os.getenv("DISABLE_INPUT_PREPROCESSING")
+    if disable_input_preprocessing and disable_input_preprocessing.lower() == "true":
+      return True
+    else:
+      return not self.data_dir
 
 
 class LibrispeechDataset(Dataset):

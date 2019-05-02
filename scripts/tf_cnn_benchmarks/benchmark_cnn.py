@@ -2281,6 +2281,14 @@ class BenchmarkCNN(object):
       # being called before hook.after_create_session returns
       sess = monitored_session._HookedSession(sess, self._hooks)
 
+      save_local_grads = os.getenv("AUTOSCALING_SAVE_LOCAL_GRADS")
+      if save_local_grads and save_local_grads.lower() == "true":
+        log_fn("Computing first round of local grads to save to file.")
+        local_grads = sess.run(self.local_grads)
+        local_grads_path = "%s/grads-%s.npy" % (self.params.train_dir, self.task_index)
+        log_fn("Saving local grads to %s: %s" % (local_grads_path, [g.shape for g in local_grads]))
+        np.save(local_grads_path, local_grads)
+
       # Anything that can potentially raise an OutOfRangeError with 'sess' MUST
       # be under this try block. The managed_session() context manager silently
       # ignores OutOfRangeError, so we must catch them and wrap them with
@@ -2977,6 +2985,21 @@ class BenchmarkCNN(object):
 
     fetches['train_op'] = train_op
     fetches['average_loss'] = average_loss
+
+    # Hack(andrew)! Do a fake round of allreduce with previously saved gradients
+    fake_allreduce_path = os.getenv("AUTOSCALING_FAKE_ALLREDUCE_PATH")
+    if fake_allreduce_path is not None:
+      import horovod.tensorflow as hvd
+      if self.params.horovod_device:
+        horovod_device = '/%s:0' % self.params.horovod_device
+      else:
+        horovod_device = ''
+      fake_grads = np.load(fake_allreduce_path)
+      reduce_ops = [hvd.allreduce(tf.convert_to_tensor(g, tf.float32), average=False, device_dense=horovod_device)
+        for g in fake_grads]
+      # Note: DO NOT use tf.group here to group the reduce_ops, otherwise these ops won't run every batch!
+      fetches["allreduce"] = reduce_ops
+
     return fetches
 
   def gradient_histogram_summary(self, avg_grads):
@@ -3265,6 +3288,9 @@ class BenchmarkCNN(object):
         grads = [
             grad * tf.cast(1. / self.loss_scale, grad.dtype) for grad in grads
         ]
+
+      # Locally computed gradients before averaging with other workers
+      self.local_grads = grads
 
       if self.params.variable_update == 'horovod':
         import horovod.tensorflow as hvd  # pylint: disable=g-import-not-at-top

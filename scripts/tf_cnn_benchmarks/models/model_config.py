@@ -98,6 +98,7 @@ _model_name_to_cifar_model = {
     'resnet110': resnet_model.create_resnet110_cifar_model,
     'resnet110_v2': resnet_model.create_resnet110_v2_cifar_model,
     'trivial': trivial_model.TrivialCifar10Model,
+    'tiny_trivial': trivial_model.TinyCifar10Model,
     'densenet40_k12': densenet_model.create_densenet40_k12_model,
     'densenet100_k12': densenet_model.create_densenet100_k12_model,
     'densenet100_k24': densenet_model.create_densenet100_k24_model,
