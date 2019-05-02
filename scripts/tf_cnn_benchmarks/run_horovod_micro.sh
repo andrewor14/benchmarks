@@ -22,6 +22,7 @@ export DISPLAY_EVERY=1
 export ENABLE_CHROME_TRACE="true"
 export DISABLE_INPUT_PREPROCESSING="true"
 export GLOBAL_BATCH_SIZE="8192"
+export FORWARD_ONLY="true"
 export AUTOSCALING_FAKE_ALLREDUCE_PATH="$BASE_TRAIN_DIR/fake-grads.npy"
 
 # Run it

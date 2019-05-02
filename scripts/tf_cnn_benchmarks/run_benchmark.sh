@@ -43,6 +43,7 @@ ENABLE_CHROME_TRACE="${ENABLE_CHROME_TRACE:=false}"
 DISPLAY_EVERY="${DISPLAY_EVERY:=10}"
 XLA="${XLA:=false}"
 XLA_COMPILE="${XLA_COMPILE:=false}"
+FORWARD_ONLY="${FORWARD_ONLY:=false}"
 
 # Note: the tensorflow benchmark code assumes --num_gpus to always be at least 1
 if [[ "$NUM_GPUS_PER_WORKER" == "0" ]]; then
@@ -151,6 +152,7 @@ echo -e "=======================================================================
   --eval_interval_secs="$EVAL_INTERVAL_SECS"\
   --eval_during_training_every_n_epochs="$EVAL_DURING_TRAINING_EVERY_N_EPOCHS"\
   --eval="$EVAL"\
+  --forward_only="$FORWARD_ONLY"\
   --optimizer="$OPTIMIZER"\
   --cross_replica_sync="$CROSS_REPLICA_SYNC"\
   --gpu_thread_mode="$GPU_THREAD_MODE"\
