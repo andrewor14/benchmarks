@@ -2892,6 +2892,24 @@ class BenchmarkCNN(object):
         if self.task_index == 0 and self.params.summary_verbosity >= 1:
           tf.summary.scalar(name, fetches[name])
 
+    # Hack(andrew)! Do a fake round of allreduce with previously saved gradients.
+    # If there are no such gradients, you can save them in a separate run by setting
+    # AUTOSCALING_SAVE_LOCAL_GRADS to true with 'forward_only' turned off.
+    # Note: Sometimes we return from this function early (e.g. forward_only),
+    # so here we ensure we always run this by doing it close to the beginning.
+    fake_allreduce_path = os.getenv("AUTOSCALING_FAKE_ALLREDUCE_PATH")
+    if fake_allreduce_path is not None:
+      import horovod.tensorflow as hvd
+      if self.params.horovod_device:
+        horovod_device = '/%s:0' % self.params.horovod_device
+      else:
+        horovod_device = ''
+      fake_grads = np.load(fake_allreduce_path)
+      reduce_ops = [hvd.allreduce(tf.convert_to_tensor(g, tf.float32), average=False, device_dense=horovod_device)
+        for g in fake_grads]
+      # Note: DO NOT use tf.group here to group the reduce_ops, otherwise these ops won't run every batch!
+      fetches["allreduce"] = reduce_ops
+
     if not phase_train:
       if self.params.forward_only:
         fetches['all_logits'] = tf.concat(all_logits, 0)
@@ -2985,20 +3003,6 @@ class BenchmarkCNN(object):
 
     fetches['train_op'] = train_op
     fetches['average_loss'] = average_loss
-
-    # Hack(andrew)! Do a fake round of allreduce with previously saved gradients
-    fake_allreduce_path = os.getenv("AUTOSCALING_FAKE_ALLREDUCE_PATH")
-    if fake_allreduce_path is not None:
-      import horovod.tensorflow as hvd
-      if self.params.horovod_device:
-        horovod_device = '/%s:0' % self.params.horovod_device
-      else:
-        horovod_device = ''
-      fake_grads = np.load(fake_allreduce_path)
-      reduce_ops = [hvd.allreduce(tf.convert_to_tensor(g, tf.float32), average=False, device_dense=horovod_device)
-        for g in fake_grads]
-      # Note: DO NOT use tf.group here to group the reduce_ops, otherwise these ops won't run every batch!
-      fetches["allreduce"] = reduce_ops
 
     return fetches
 
