@@ -16,20 +16,26 @@ export SERVER_PROTOCOL="grpc+mpi"
 
 # Maybe modify these
 export NUM_BATCHES="10"
-export DATASET="cifar10"
-export MODEL="tiny_trivial"
 export DISPLAY_EVERY=1
 export ENABLE_CHROME_TRACE="true"
 export DISABLE_INPUT_PREPROCESSING="true"
-export GLOBAL_BATCH_SIZE="8192"
-export FORWARD_ONLY="true"
-export AUTOSCALING_FAKE_ALLREDUCE_PATH="$BASE_TRAIN_DIR/fake-grads.npy"
+export RUN_FAKE_ALLREDUCE="true"
+if [[ "$RUN_FAKE_ALLREDUCE" == "true" ]]; then
+  export DATASET="cifar10"
+  export MODEL="tiny_trivial"
+  export FORWARD_ONLY="true"
+  export AUTOSCALING_FAKE_ALLREDUCE_PATH="$BASE_TRAIN_DIR/fake-grads.npy"
+else
+  export DATASET="synthetic"
+  export MODEL="andrew_trivial"
+  export GLOBAL_BATCH_SIZE="8192"
+fi
 
 # Run it
 for num_workers in 2 4 8 12 16 20 24 28 32 36 40 44 48 52 56 60; do
   export NUM_WORKERS="$num_workers"
   # If we are doing a fake allreduce, then limit the computation we do
-  if [[ -n "$AUTOSCALING_FAKE_ALLREDUCE_PATH" ]]; then
+  if [[ "$RUN_FAKE_ALLREDUCE" == "true" ]]; then
     export BATCH_SIZE="16"
     export RUN_TAG="horovod_120MB_${num_workers}workers"
   else
