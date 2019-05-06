@@ -49,8 +49,9 @@ if [[ -n "$CUDA_VISIBLE_DEVICES" ]]; then
     i="$((i+1))"
   done
   # Make sure we have the right number of workers
+  # It's OK if we don't end up using all the GPUs on the machine!
   # TODO: also make sure each worker has the same number of GPUs
-  if [[ "${#CUDA_VISIBLE_DEVICES_PER_WORKER[*]}" != "$NUM_WORKERS" ]]; then
+  if [[ "${#CUDA_VISIBLE_DEVICES_PER_WORKER[*]}" < "$NUM_WORKERS" ]]; then
     echo "ERROR: GPUs do not split evenly among workers:"
     echo "  NUM_WORKERS: $NUM_WORKERS"
     echo "  NUM_GPUS_PER_WORKER: $NUM_GPUS_PER_WORKER"
