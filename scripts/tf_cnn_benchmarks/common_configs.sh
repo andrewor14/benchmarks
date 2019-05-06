@@ -58,6 +58,20 @@ elif [[ "$ENVIRONMENT" == "ns" ]]; then
   export LOCAL_PARAMETER_DEVICE="cpu"
   export DATA_FORMAT="NHWC"
   export BYPASS_GPU_TEST="true"
+elif [[ "$ENVIRONMENT" = "snsgpu" ]]; then
+  export LOG_DIR="/home/andrew/Documents/dev/logs"
+  export BENCHMARK_DIR="/home/andrew/Documents/dev/benchmarks/scripts/tf_cnn_benchmarks"
+  export IMAGENET_DATA_DIR="" # TODO: fill this in
+  export CIFAR10_DATA_DIR="/home/andrew/Documents/dev/dataset/cifar10/cifar-10-batches-py"
+  export BASE_TRAIN_DIR="/home/andrew/Documents/dev/train_data"
+  export BASE_EVAL_DIR="/home/andrew/Documents/dev/eval_data"
+  export TF_PKG="/home/andrew/Documents/dev/tensorflow_pkg/tensorflow-1.12.0rc1-cp36-cp36m-linux_x86_64.whl"
+  export PYTHON_COMMAND="python3"
+  export DEFAULT_NUM_GPUS_PER_WORKER="2"
+  # No slurm on this machine, not used
+  export DEFAULT_NUM_GPUS_PER_NODE=""
+  export DEFAULT_NUM_CPUS_PER_NODE=""
+  export DEFAULT_MEMORY_PER_NODE=""
 else
   echo "ERROR: Unknown environment '$ENVIRONMENT'"
   exit 1
