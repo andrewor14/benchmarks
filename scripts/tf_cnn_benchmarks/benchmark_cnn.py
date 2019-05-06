@@ -1063,14 +1063,13 @@ def merge_params_with_slurm(flag_values):
     use_parameter_server = flag_values["variable_update"] == "parameter_server"
     num_parameter_servers = 1 if use_parameter_server else 0
     cluster, my_job_name, my_task_index = tf_config_from_slurm(num_parameter_servers, 2222)
+    worker_hosts = cluster["worker"]
+    flag_values["worker_hosts"] = ",".join(worker_hosts)
+    flag_values["task_index"] = my_task_index
     if use_parameter_server:
       ps_hosts = cluster["ps"]
       flag_values["ps_hosts"] = ",".join(ps_hosts)
       flag_values["job_name"] = my_job_name
-    else:
-      worker_hosts = cluster["worker"]
-      flag_values["worker_hosts"] = ",".join(worker_hosts)
-      flag_values["task_index"] = my_task_index
   return flag_values
 
 
