@@ -133,6 +133,10 @@ echo -e "-----------------------------------------------------------------------
 printenv
 echo -e "==========================================================================\n"
 
+if [[ "$SINGLE_PROCESS_MODE" == "true" ]]; then
+  unset SLURM_JOB_NODELIST
+fi
+
 "$PYTHON_COMMAND" tf_cnn_benchmarks.py\
   --num_gpus="$NUM_GPUS_PER_WORKER"\
   --device="$DEVICE"\
