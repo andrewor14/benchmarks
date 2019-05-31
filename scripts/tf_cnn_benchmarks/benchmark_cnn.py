@@ -29,6 +29,7 @@ import re
 import threading
 import time
 import traceback
+import xmlrpc.server
 
 from absl import flags as absl_flags
 import numpy as np
@@ -645,6 +646,16 @@ flags.DEFINE_string('benchmark_test_id', None,
                     'system.')
 
 platforms_util.define_platform_params()
+
+
+# A simple RPC service for autoscaling requests
+class AutoscalingService:
+  def __init__(self, benchmark_cnn):
+    self.benchmark_cnn = benchmark_cnn
+  def greet(self, name):
+    return "Hello %s!" % name
+  def new_cluster_spec(self, cluster_spec):
+    raise NotImplementedError
 
 
 class GlobalStepWatcher(threading.Thread):
@@ -1841,6 +1852,19 @@ class BenchmarkCNN(object):
       self.benchmark_logger.log_run_info(
           self.model.get_model_name(), benchmark_info['dataset_name'],
           run_param, test_id=self.params.benchmark_test_id)
+
+  # Start a server listening for autoscaling requests
+  # This is a simple RPC server that exposes an interface for external
+  # python processes to adjust the number of workers in a running job
+  def listen_for_autoscaling_requests(self, port):
+    def start_autoscaling_server(port):
+      server = xmlrpc.server.SimpleXMLRPCServer(
+        ('localhost', port), logRequests=True, allow_none=True)
+      server.register_introspection_functions()
+      server.register_multicall_functions()
+      server.register_instance(AutoscalingService(self))
+      server.serve_forever()
+    threading.Thread(target=start_autoscaling_server, args=(port,)).start()
 
   def run(self):
     """Run the benchmark task assigned to this process.
