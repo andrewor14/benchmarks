@@ -34,8 +34,7 @@ def tf_config_from_slurm(num_ps, port_number=2222):
 
   @param: num_ps number of parameter servers to run
   @param: port_number port number to be used for communication
-  @return: a tuple containing cluster with fields cluster_spec,
-           task_name and task_id
+  @return: a 4-tuple (cluster_spec, task_name, task_index, assigned_port_number)
   """
 
   if not running_through_slurm():
@@ -90,7 +89,8 @@ def tf_config_from_slurm(num_ps, port_number=2222):
   else:
     cluster = {"worker": worker_nodes}
 
-  return cluster, my_job_name, my_task_index
+  assigned_port_number = int(node_name.split(":")[-1])
+  return cluster, my_job_name, my_task_index, assigned_port_number
 
 def _expand_node_list(node_list):
   """

@@ -1073,7 +1073,8 @@ def merge_params_with_slurm(flag_values):
   if running_through_slurm():
     use_parameter_server = flag_values["variable_update"] == "parameter_server"
     num_parameter_servers = 1 if use_parameter_server else 0
-    cluster, my_job_name, my_task_index = tf_config_from_slurm(num_parameter_servers, 2222)
+    cluster, my_job_name, my_task_index, assigned_port_number =\
+      tf_config_from_slurm(num_parameter_servers, 2222)
     worker_hosts = cluster["worker"]
     flag_values["worker_hosts"] = ",".join(worker_hosts)
     flag_values["task_index"] = my_task_index
@@ -1081,6 +1082,7 @@ def merge_params_with_slurm(flag_values):
       ps_hosts = cluster["ps"]
       flag_values["ps_hosts"] = ",".join(ps_hosts)
       flag_values["job_name"] = my_job_name
+    flag_values["rpc_port"] = assigned_port_number
   return flag_values
 
 
@@ -1857,6 +1859,7 @@ class BenchmarkCNN(object):
   # This is a simple RPC server that exposes an interface for external
   # python processes to adjust the number of workers in a running job
   def listen_for_autoscaling_requests(self, port):
+    log_fn("Listening for autoscaling requests on port %s" % port)
     def start_autoscaling_server(port):
       server = xmlrpc.server.SimpleXMLRPCServer(
         ('localhost', port), logRequests=True, allow_none=True)
