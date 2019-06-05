@@ -645,6 +645,10 @@ flags.DEFINE_string('benchmark_test_id', None,
                     'consumption, and does not have any impact within the '
                     'system.')
 
+# Required for autoscaling
+flags.DEFINE_integer('rpc_port', None, 'Don\'t set this!')
+flags.DEFINE_string('cluster_spec', None, 'Don\'t set this!')
+
 platforms_util.define_platform_params()
 
 
@@ -654,8 +658,11 @@ class AutoscalingService:
     self.benchmark_cnn = benchmark_cnn
   def greet(self, name):
     return "Hello %s!" % name
-  def new_cluster_spec(self, cluster_spec):
-    raise NotImplementedError
+  def get_cluster_spec(self):
+    return self.benchmark_cnn.params.cluster_spec
+  def update_cluster_spec(self, cluster_spec):
+    log_fn("Warning: ignoring cluster spec, using old one %s" % self.benchmark_cnn.params.cluster_spec)
+    self.benchmark_cnn.restart_next_step = True
 
 
 class GlobalStepWatcher(threading.Thread):
@@ -952,10 +959,7 @@ def load_checkpoint(saver, sess, ckpt_dir):
     global_step = 0
   else:
     global_step = int(global_step)
-  restore_checkpoint_start = time.time()
   saver.restore(sess, model_checkpoint_path)
-  restore_checkpoint_time = time.time() - restore_checkpoint_start
-  log_fn("ANDREW(restore_checkpoint_time): %s s" % restore_checkpoint_time)
   log_fn('Successfully loaded model from %s.' % model_checkpoint_path)
   return global_step
 
@@ -1083,6 +1087,7 @@ def merge_params_with_slurm(flag_values):
       flag_values["ps_hosts"] = ",".join(ps_hosts)
       flag_values["job_name"] = my_job_name
     flag_values["rpc_port"] = assigned_port_number
+    flag_values["cluster_spec"] = cluster
   return flag_values
 
 
@@ -1452,7 +1457,45 @@ class BenchmarkCNN(object):
         raise ValueError('--trt_mode should not be specified if one of '
                          '--forward_only and --freeze_when_forward_only is set '
                          'to False')
+    self.saved_variables = None
+    self.restart_next_step = False
+    self.initialize()
 
+  def reinitialize(self):
+    log_fn("AUTOSCALING(reinitialize)")
+    tf.reset_default_graph()
+    self.cluster_manager._server.destroy()
+    self.initialize()
+    self.num_warmup_batches = 0
+    self.restart_next_step = False
+
+  def save_variables(self, sess):
+    '''Save the values of savable variables (including the global step) to memory.'''
+    savable_variables = self.variable_mgr.savable_variables()
+    save_start = time.time()
+    values = sess.run(savable_variables)
+    save_end = time.time()
+    self.saved_variables = {}
+    for i, v in enumerate(savable_variables):
+      self.saved_variables[v.name] = values[i]
+    log_fn("AUTOSCALING(save_variables): Just saved a bunch of variables (%s), took %s seconds!" %\
+      (len(self.saved_variables), save_end - save_start))
+
+  def restore_variables_ops(self):
+    '''Restore the values of savable variables (including the global step) from memory.'''
+    savable_variables = self.variable_mgr.savable_variables()
+    if len(savable_variables) != len(self.saved_variables):
+      error_message = "Number of saved variables differ from number of savable variables!"
+      log_fn("Error: %s" % error_message)
+      raise ValueError(error_message)
+    restore_ops = []
+    log_fn("AUTOSCALING(restore_variables_ops): Trying to restore some variables (%s)!" % len(savable_variables))
+    for v in savable_variables:
+      if v.name in self.saved_variables:
+        restore_ops.append(v.assign(self.saved_variables[v.name]))
+    return restore_ops
+
+  def initialize(self):
     # Use the batch size from the command line if specified, otherwise use the
     # model's default batch size.  Scale the benchmark's batch size by the
     # number of GPUs.
@@ -1489,7 +1532,7 @@ class BenchmarkCNN(object):
     if self.job_name:
       self.task_index = self.params.task_index
       self.cluster_manager = platforms_util.get_cluster_manager(
-          params, create_config_proto(params))
+          self.params, create_config_proto(self.params))
       assert isinstance(self.cluster_manager, cnn_util.BaseClusterManager)
 
       worker_prefix = '/job:worker/replica:0/task:%s' % self.task_index
@@ -1535,9 +1578,9 @@ class BenchmarkCNN(object):
         for i in xrange(self.num_gpus)
     ]
 
-    subset = 'validation' if params.eval else 'train'
+    subset = 'validation' if self.params.eval else 'train'
     self.num_batches, self.num_epochs = get_num_batches_and_epochs(
-        params, self.batch_size * self.num_workers,
+        self.params, self.batch_size * self.num_workers,
         self.dataset.num_examples_per_epoch(subset))
     if self.mode in (constants.BenchmarkMode.EVAL,
                      constants.BenchmarkMode.TRAIN_AND_EVAL):
@@ -1898,7 +1941,11 @@ class BenchmarkCNN(object):
         # TODO(laigd): freeze the graph in eval mode.
         return self._run_eval()
     else:
-      return self._benchmark_train()
+      while True:
+        train_stats = self._benchmark_train()
+        if not self.restart_next_step:
+          return train_stats
+        self.reinitialize()
 
   def _run_eval(self):
     """Evaluate a model every self.params.eval_interval_secs.
@@ -2082,7 +2129,6 @@ class BenchmarkCNN(object):
     """
     graph = self.graph
     with graph.as_default():
-      build_graph_start = time.time()
       build_result = self._build_graph()
       if self.mode == constants.BenchmarkMode.TRAIN_AND_EVAL:
         with self.variable_mgr.reuse_variables():
@@ -2091,8 +2137,6 @@ class BenchmarkCNN(object):
       else:
         eval_build_results = None
     (graph, result_to_benchmark) = self._preprocess_graph(graph, build_result)
-    build_graph_time = time.time() - build_graph_start
-    log_fn("ANDREW(build_graph_time): %s s" % build_graph_time)
     with graph.as_default():
       return self._benchmark_graph(result_to_benchmark, eval_build_results)
 
@@ -2150,6 +2194,9 @@ class BenchmarkCNN(object):
     table_init_ops = tf.tables_initializer()
 
     variable_manager_init_ops = [local_var_init_op]
+    # If we're picking up from a previous run, restore saved variables
+    if self.saved_variables is not None:
+      variable_manager_init_ops.extend(self.restore_variables_ops())
     if table_init_ops:
       variable_manager_init_ops.extend([table_init_ops])
     if not self.forward_only_and_freeze:
@@ -2376,6 +2423,7 @@ class BenchmarkCNN(object):
         if image_producer is not None:
           image_producer.notify_image_consumption()
     self.init_global_step, = sess.run([graph_info.global_step])
+    log_fn("AUTOSCALING(benchmark_with_session): Starting benchmark at global step = %s" % self.init_global_step)
     if self.job_name and not self.params.cross_replica_sync:
       # TODO(zhengxq): Do we need to use a global step watcher at all?
       global_step_watcher = GlobalStepWatcher(
@@ -2442,6 +2490,12 @@ class BenchmarkCNN(object):
         # reset times to ignore warm up batch
         step_train_times = []
         loop_start_time = time.time()
+      # Check if we're restarting servers
+      # TODO: saver is not accurate anymore
+      if local_step > 0 and self.restart_next_step:
+        log_fn("AUTOSCALING(benchmark_with_session): Received signal to retart server")
+        self.save_variables(sess)
+        return None
       if (summary_writer and
           (local_step + 1) % self.params.save_summaries_steps == 0):
         fetch_summary = graph_info.summary_op
@@ -2464,13 +2518,10 @@ class BenchmarkCNN(object):
           local_step % self.params.save_model_steps == 0 and
           local_step > 0 and
           is_chief):
-        save_checkpoint_start = time.time()
         # Note: `sess` is a HookedSession, which is a WrappedSession, but the saver
         # expects a SessionInterface, so here we pass in the original session
         supervisor.saver.save(sess._sess, supervisor.save_path,
                               supervisor.global_step)
-        save_checkpoint_time = time.time() - save_checkpoint_start
-        log_fn("ANDREW(save_checkpoint_time): %s s" % save_checkpoint_time)
       if (eval_graph_info and local_step > 0 and not done_fn() and
           self._should_eval_during_training(local_step)):
         python_global_step = sess.run(graph_info.global_step)
