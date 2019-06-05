@@ -103,9 +103,13 @@ function start_it() {
 
 # Actually start everything
 export SLURM_JOB_NUM_PROCS_PER_NODE="$((NUM_WORKERS+NUM_PARAMETER_SERVERS))"
-for i in `seq 0 $((SLURM_JOB_NUM_PROCS_PER_NODE - 1))`; do
-  start_it $i
-done
+if [[ -n "$AUTOSCALING_START_THIS_ONLY" ]]; then
+  start_it "$AUTOSCALING_START_THIS_ONLY"
+else
+  for i in `seq 0 $((SLURM_JOB_NUM_PROCS_PER_NODE - 1))`; do
+    start_it $i
+  done
+fi
 
 if [[ "$FATE_SHARING" == "true" ]]; then
   # In parameter server mode, the parameter servers and some workers often do not exit.

@@ -8,24 +8,22 @@
 source common_configs.sh
 
 # Required configs
-export NUM_WORKERS="1"
-export NUM_PARAMETER_SERVERS="0"
+export NUM_WORKERS="${NUM_WORKERS:=1}"
+export NUM_PARAMETER_SERVERS="1"
 
 # Optional configs
-#export DATASET="synthetic"
-#export MODEL="resnet50_v1.5"
 export DATASET="cifar10"
-export MODEL="trivial"
-export NUM_GPUS_PER_WORKER="2"
+export MODEL="resnet56"
+export NUM_GPUS_PER_WORKER="1"
 export OPTIMIZER="momentum"
 export CROSS_REPLICA_SYNC="true"
-export NUM_BATCHES="100"
-export FATE_SHARING="true"
-export SINGLE_PROCESS_MODE="true"
+export NUM_BATCHES="1000000"
 export DISPLAY_EVERY="1"
+export AUTOSCALING_DISABLE_CHECKPOINT_RESTORE="true"
 
 # Run it
-for b in 1 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192; do
+#for b in 1 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192; do
+for b in 32; do
   export BATCH_SIZE="$b"
   RUN_TAG="batch_size_micro_$b"
   SUBMIT_TIMESTAMP="$(get_submit_timestamp)"

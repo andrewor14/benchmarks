@@ -71,6 +71,15 @@ def roll_numpy_batches(array, batch_size, shift_ratio):
   return np.roll(array, -starting_item, axis=0)
 
 
+def make_cluster_spec(params):
+    worker_hosts = params.worker_hosts.split(',')
+    ps_hosts = params.ps_hosts.split(',') if params.ps_hosts else []
+    cluster = {'worker': worker_hosts}
+    if ps_hosts:
+      cluster['ps'] = ps_hosts
+    return cluster
+
+
 # For Python 2.7 compatibility, we do not use threading.Barrier.
 class Barrier(object):
   """Implements a lightweight Barrier.
@@ -225,12 +234,7 @@ class BaseClusterManager(object):
   """The manager for the cluster of servers running the benchmark."""
 
   def __init__(self, params):
-    worker_hosts = params.worker_hosts.split(',')
-    ps_hosts = params.ps_hosts.split(',') if params.ps_hosts else []
-    cluster = {'worker': worker_hosts}
-    if ps_hosts:
-      cluster['ps'] = ps_hosts
-    self._cluster_spec = tf.train.ClusterSpec(cluster)
+    self._cluster_spec = tf.train.ClusterSpec(make_cluster_spec(params))
 
   def get_target(self):
     """Returns a target to be passed to tf.Session()."""

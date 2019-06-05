@@ -22,6 +22,7 @@ from __future__ import print_function
 import argparse
 from collections import namedtuple
 import contextlib
+import json
 import math
 import multiprocessing
 import os
@@ -660,8 +661,16 @@ class AutoscalingService:
     return "Hello %s!" % name
   def get_cluster_spec(self):
     return self.benchmark_cnn.params.cluster_spec
-  def update_cluster_spec(self, cluster_spec):
-    log_fn("Warning: ignoring cluster spec, using old one %s" % self.benchmark_cnn.params.cluster_spec)
+  def add_workers(self, host_ports):
+    log_fn("AUTOSCALING(add_workers): adding these workers %s" % host_ports)
+    cluster_spec = cnn_util.make_cluster_spec(self.benchmark_cnn.params)
+    cluster_spec["worker"].extend(host_ports)
+    self.benchmark_cnn.params = self.benchmark_cnn.params._replace(
+      cluster_spec=json.dumps(cluster_spec),
+      worker_hosts=",".join(cluster_spec["worker"]))
+    log_fn("AUTOSCALING(add_workers): new worker_hosts = %s" % self.benchmark_cnn.params.worker_hosts)
+    log_fn("AUTOSCALING(add_workers): new cluster_spec = %s" % self.benchmark_cnn.params.cluster_spec)
+    # TODO: calculate new local batch size here
     self.benchmark_cnn.restart_next_step = True
 
 
