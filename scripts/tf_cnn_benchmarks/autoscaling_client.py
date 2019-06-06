@@ -38,59 +38,84 @@ class AutoscalingClient:
     worker_hosts = cluster_spec["worker"] if "worker" in cluster_spec else []
     host_ports = ps_hosts + worker_hosts
     print("Parsed the following host ports from cluster spec: %s" % host_ports)
-    self._hosts = cluster_spec
-    self._pending_hosts = copy.deepcopy(cluster_spec)
-    self._servers = []
-
-  @property
-  def worker_hosts(self):
-    return self._hosts["worker"]
+    self._cluster_spec = cluster_spec
+    self._servers = {}
 
   @property
   def ps_hosts(self):
-    return self._hosts["ps"]
+    return self._cluster_spec["ps"]
+
+  @property
+  def worker_hosts(self):
+    return self._cluster_spec["worker"]
 
   @property
   def hosts(self):
-    return self.worker_hosts + self.ps_hosts
+    return self.ps_hosts + self.worker_hosts
 
   @property
   def servers(self):
     '''
     Return the ServerProxy objects associated with the hosts in the system.
-
-    This accessor checks if there are hosts still pending, i.e. hosts we know about
-    but haven't connected to yet. If so, try to connect and, if successful, mark
-    them as no longer pending.
-
     All RPC calls should go through this accessor.
     '''
-    for k, v in self._pending_hosts.items():
+    # If there are workers we know about but haven't connected to yet, connect to them
+    if len(self.hosts) > len(self._servers):
+      pending_hosts = list(set(self.hosts) - set(self._servers.keys()))
       failed_hosts = []
-      for hp in v:
+      for hp in pending_hosts:
         try:
-          self._servers.append(connect(hp, convert_port=True))
+          self._servers[hp] = connect(hp, convert_port=True)
         except ConnectionRefusedError:
           failed_hosts.append(hp)
-      self._pending_hosts[k] = failed_hosts
+      # Fail if there were any hosts we couldn't connect to
       if len(failed_hosts) > 0:
         raise Exception("Unable to connect to the following hosts. Try again later.\n%s" % failed_hosts)
-    return self._servers
+    # Otherwise, if there are expired workers, remove them
+    elif len(self.hosts) < len(self._servers):
+      expired_hosts = list(set(self._servers.keys()) - set(self.hosts))
+      for hp in expired_hosts:
+        del self._servers[hp]
+    # Make sure we are connected to all hosts we know about
+    if len(self.hosts) != len(self._servers):
+      raise ValueError("Number of hosts is different from number of server proxies!\n" +
+        "Hosts: %s\nServer proxies: %s" % (self.hosts, self._servers.keys()))
+    return self._servers.values()
 
   def add_worker(self, host_port):
     '''
     Add a worker identified by the given host_port to the system.
-    Note: this call assumes the given worker process has already started.
     '''
     self.add_workers([host_port])
+
+  def remove_worker(self, host_port):
+    '''
+    Remove a worker identified by the given host_port from the system.
+    '''
+    self.remove_workers([host_port])
 
   def add_workers(self, host_ports):
     '''
     Add workers identified by the given host_ports to the system.
-    Note: this call assumes the given worker processes have already started.
     '''
+    known_host_ports = [hp for hp in host_ports if hp in self.worker_hosts]
+    new_host_ports = [hp for hp in host_ports if hp not in self.worker_hosts]
+    if len(known_host_ports) > 0:
+      print("Warning: not adding the following workers because they already exist: %s" % known_host_ports)
     for server in self.servers:
-      server.add_workers(host_ports)
-    self._hosts["worker"].extend(host_ports)
-    self._pending_hosts["worker"].extend(host_ports)
+      server.add_workers(new_host_ports)
+    self._cluster_spec["worker"].extend(new_host_ports)
+
+  def remove_workers(self, host_ports):
+    '''
+    Remove workers identified by the given host_ports from the system.
+    '''
+    known_host_ports = [hp for hp in host_ports if hp in self.worker_hosts]
+    new_host_ports = [hp for hp in host_ports if hp not in self.worker_hosts]
+    if len(new_host_ports) > 0:
+      print("Warning: not removing the following workers because they are not known to us: %s" % new_host_ports)
+    for server in self.servers:
+      server.remove_workers(host_ports)
+    for hp in known_host_ports:
+      self._cluster_spec["worker"].remove(hp)
 

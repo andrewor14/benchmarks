@@ -46,6 +46,7 @@ import flags
 import ksync_optimizer
 import variable_mgr
 import variable_mgr_util
+from autoscaling_service import AutoscalingService
 from cnn_util import log_fn
 from models import model_config
 from platforms import util as platforms_util
@@ -647,31 +648,10 @@ flags.DEFINE_string('benchmark_test_id', None,
                     'system.')
 
 # Required for autoscaling
-flags.DEFINE_integer('rpc_port', None, 'Don\'t set this!')
+flags.DEFINE_string('host_port', None, 'Don\'t set this!')
 flags.DEFINE_string('cluster_spec', None, 'Don\'t set this!')
 
 platforms_util.define_platform_params()
-
-
-# A simple RPC service for autoscaling requests
-class AutoscalingService:
-  def __init__(self, benchmark_cnn):
-    self.benchmark_cnn = benchmark_cnn
-  def greet(self, name):
-    return "Hello %s!" % name
-  def get_cluster_spec(self):
-    return self.benchmark_cnn.params.cluster_spec
-  def add_workers(self, host_ports):
-    log_fn("AUTOSCALING(add_workers): adding these workers %s" % host_ports)
-    cluster_spec = cnn_util.make_cluster_spec(self.benchmark_cnn.params)
-    cluster_spec["worker"].extend(host_ports)
-    self.benchmark_cnn.params = self.benchmark_cnn.params._replace(
-      cluster_spec=json.dumps(cluster_spec),
-      worker_hosts=",".join(cluster_spec["worker"]))
-    log_fn("AUTOSCALING(add_workers): new worker_hosts = %s" % self.benchmark_cnn.params.worker_hosts)
-    log_fn("AUTOSCALING(add_workers): new cluster_spec = %s" % self.benchmark_cnn.params.cluster_spec)
-    # TODO: calculate new local batch size here
-    self.benchmark_cnn.restart_next_step = True
 
 
 class GlobalStepWatcher(threading.Thread):
@@ -1086,7 +1066,7 @@ def merge_params_with_slurm(flag_values):
   if running_through_slurm():
     use_parameter_server = flag_values["variable_update"] == "parameter_server"
     num_parameter_servers = 1 if use_parameter_server else 0
-    cluster, my_job_name, my_task_index, assigned_port_number =\
+    cluster, my_job_name, my_task_index, my_host_port =\
       tf_config_from_slurm(num_parameter_servers, 2222)
     worker_hosts = cluster["worker"]
     flag_values["worker_hosts"] = ",".join(worker_hosts)
@@ -1095,8 +1075,8 @@ def merge_params_with_slurm(flag_values):
       ps_hosts = cluster["ps"]
       flag_values["ps_hosts"] = ",".join(ps_hosts)
       flag_values["job_name"] = my_job_name
-    flag_values["rpc_port"] = assigned_port_number
-    flag_values["cluster_spec"] = cluster
+    flag_values["host_port"] = my_host_port
+    flag_values["cluster_spec"] = json.dumps(cluster)
   return flag_values
 
 
@@ -1467,7 +1447,8 @@ class BenchmarkCNN(object):
                          '--forward_only and --freeze_when_forward_only is set '
                          'to False')
     self.saved_variables = None
-    self.restart_next_step = False
+    self.should_restart = False
+    self.should_terminate = False
     self.initialize()
 
   def reinitialize(self):
@@ -1476,7 +1457,7 @@ class BenchmarkCNN(object):
     self.cluster_manager._server.destroy()
     self.initialize()
     self.num_warmup_batches = 0
-    self.restart_next_step = False
+    self.should_restart = False
 
   def save_variables(self, sess):
     '''Save the values of savable variables (including the global step) to memory.'''
@@ -1933,7 +1914,7 @@ class BenchmarkCNN(object):
       while True:
         log_fn('Running parameter server %s' % self.task_index)
         self.cluster_manager.join_server(self.terminating_queues, self.graph)
-        if not self.restart_next_step:
+        if not self.should_restart:
           return {}
         self.reinitialize()
 
@@ -1955,7 +1936,7 @@ class BenchmarkCNN(object):
     else:
       while True:
         train_stats = self._benchmark_train()
-        if not self.restart_next_step:
+        if self.should_terminate or not self.should_restart:
           return train_stats
         self.reinitialize()
 
@@ -2504,9 +2485,12 @@ class BenchmarkCNN(object):
         loop_start_time = time.time()
       # If we received signal to restart, save our variables and return
       # TODO: saver is not accurate anymore
-      if local_step > 0 and self.restart_next_step:
-        log_fn("AUTOSCALING(benchmark_with_session): Received signal to restart server")
-        self.save_variables(sess)
+      if local_step > 0 and (self.should_restart or self.should_terminate):
+        if self.should_terminate:
+          log_fn("AUTOSCALING(benchmark_with_session): Received signal to terminate")
+        else:
+          log_fn("AUTOSCALING(benchmark_with_session): Received signal to restart server")
+          self.save_variables(sess)
         sess.run(graph_info.terminate_op)
         return None
       if (summary_writer and
