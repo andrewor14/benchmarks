@@ -48,7 +48,7 @@ elif [[ "$ENVIRONMENT" == "ns" ]]; then
   export BASE_TRAIN_DIR="/home/andrewor/train_data"
   export BASE_EVAL_DIR="/home/andrewor/eval_data"
   export TF_PKG="" # TODO: fill this in
-  export PYTHON_COMMAND="python"
+  export PYTHON_COMMAND="/usr/licensed/anaconda3/5.2.0/bin/python3.6"
   export DEFAULT_NUM_GPUS_PER_WORKER="0"
   export DEFAULT_NUM_GPUS_PER_NODE="0"
   export DEFAULT_NUM_CPUS_PER_NODE="16"
