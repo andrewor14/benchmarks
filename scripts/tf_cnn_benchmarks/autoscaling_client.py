@@ -50,7 +50,8 @@ class AutoscalingClient:
     Note: this call assumes the given worker processes have already started.
     '''
     self.worker_hosts.extend(host_ports)
-    self.servers.extend([connect(hp, convert_port=True) for hp in host_ports])
     for server in self.servers:
       server.add_workers(host_ports)
+    # TODO: connect to the new servers after they're up
+    #self.servers.extend([connect(hp, convert_port=True) for hp in host_ports])
 

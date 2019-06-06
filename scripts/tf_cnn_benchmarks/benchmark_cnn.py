@@ -1930,9 +1930,12 @@ class BenchmarkCNN(object):
        ValueError: unrecognized job name.
     """
     if self.params.job_name == 'ps':
-      log_fn('Running parameter server %s' % self.task_index)
-      self.cluster_manager.join_server(self.terminating_queues, self.graph)
-      return {}
+      while True:
+        log_fn('Running parameter server %s' % self.task_index)
+        self.cluster_manager.join_server(self.terminating_queues, self.graph)
+        if not self.restart_next_step:
+          return {}
+        self.reinitialize()
 
     # For distributed_all_reduce with multiple workers, drive
     # from a separate controller process.
@@ -2499,11 +2502,12 @@ class BenchmarkCNN(object):
         # reset times to ignore warm up batch
         step_train_times = []
         loop_start_time = time.time()
-      # Check if we're restarting servers
+      # If we received signal to restart, save our variables and return
       # TODO: saver is not accurate anymore
       if local_step > 0 and self.restart_next_step:
-        log_fn("AUTOSCALING(benchmark_with_session): Received signal to retart server")
+        log_fn("AUTOSCALING(benchmark_with_session): Received signal to restart server")
         self.save_variables(sess)
+        sess.run(graph_info.terminate_op)
         return None
       if (summary_writer and
           (local_step + 1) % self.params.save_summaries_steps == 0):
