@@ -28,6 +28,14 @@ NUM_GPUS_PER_NODE="${NUM_GPUS_PER_NODE:=$DEFAULT_NUM_GPUS_PER_NODE}"
 MEMORY_PER_NODE="${MEMORY_PER_NODE:=$DEFAULT_MEMORY_PER_NODE}"
 TIME_LIMIT_HOURS="${TIME_LIMIT_HOURS:=144}"
 
+# If we're not using GPUs, set the right flags so tensorflow knows
+if [[ "$NUM_GPUS_PER_WORKER" == 0 ]]; then
+  export DEVICE="cpu"
+  export LOCAL_PARAMETER_DEVICE="cpu"
+  export DATA_FORMAT="NHWC"
+  export BYPASS_GPU_TEST="true"
+fi
+
 # In non-multiplex mode, NUM_GPUS_PER_NODE and NUM_GPUS_PER_WORKER should be the same.
 if [[ "$SCRIPT_NAME" == "run_benchmark.sh" ]] &&\
     [[ -n "$NUM_GPUS_PER_WORKER" ]] &&\

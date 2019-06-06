@@ -25,13 +25,20 @@ if [[ -z "$NUM_PARAMETER_SERVERS" ]]; then
   exit 1
 fi
 
-# Decide which GPUs each worker gets, e.g. if CUDA_VISIBLE_DEVICES is "0,1,2,3" and
-# NUM_GPUS_PER_WORKER is 2, then CUDA_VISIBLE_DEVICES_PER_WORKER will be ("0,1", "2,3").
-# In this case, NUM_WORKERS must be 2 or the program will fail.
 NUM_GPUS_PER_WORKER="${NUM_GPUS_PER_WORKER:=$DEFAULT_NUM_GPUS_PER_WORKER}"
 CUDA_VISIBLE_DEVICES_PER_WORKER=()
 ORIGINAL_CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES"
-if [[ -n "$CUDA_VISIBLE_DEVICES" ]]; then
+
+# If we're not using GPUs, set the right flags so tensorflow knows
+if [[ "$NUM_GPUS_PER_WORKER" == 0 ]]; then
+  export DEVICE="cpu"
+  export LOCAL_PARAMETER_DEVICE="cpu"
+  export DATA_FORMAT="NHWC"
+  export BYPASS_GPU_TEST="true"
+elif [[ -n "$CUDA_VISIBLE_DEVICES" ]]; then
+  # Decide which GPUs each worker gets, e.g. if CUDA_VISIBLE_DEVICES is "0,1,2,3" and
+  # NUM_GPUS_PER_WORKER is 2, then CUDA_VISIBLE_DEVICES_PER_WORKER will be ("0,1", "2,3").
+  # In this case, NUM_WORKERS must be 2 or the program will fail.
   i=1
   current_device_string=""
   for device in $(echo "$CUDA_VISIBLE_DEVICES" | sed "s/,/ /g"); do
@@ -83,7 +90,7 @@ fi
 function start_it() {
   index="$1"
   # Don't give the parameter server GPUs
-  if [[ "$index" < "$NUM_PARAMETER_SERVERS" ]]; then
+  if [[ "$index" < "$NUM_PARAMETER_SERVERS" ]] || [[ "$NUM_GPUS_PER_WORKER" == 0 ]]; then
     export CUDA_VISIBLE_DEVICES=""
   elif [[ -n "$CUDA_VISIBLE_DEVICES_PER_WORKER" ]]; then
     # Export the right set of devices for this worker

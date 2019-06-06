@@ -14,7 +14,7 @@ export NUM_PARAMETER_SERVERS="1"
 # Optional configs
 export DATASET="cifar10"
 export MODEL="resnet56"
-export NUM_GPUS_PER_WORKER="1"
+export NUM_GPUS_PER_WORKER="0"
 export OPTIMIZER="momentum"
 export CROSS_REPLICA_SYNC="true"
 export NUM_BATCHES="1000000"

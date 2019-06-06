@@ -25,6 +25,13 @@ if [[ -n "$NUM_GPUS" ]]; then
   exit 1
 fi
 
+if [[ "$NUM_GPUS_PER_WORKER" == 0 ]]; then
+  export DEVICE="cpu"
+  export LOCAL_PARAMETER_DEVICE="cpu"
+  export DATA_FORMAT="NHWC"
+  export BYPASS_GPU_TEST="true"
+fi
+
 # General configs
 NUM_GPUS_PER_WORKER="${NUM_GPUS_PER_WORKER:=$DEFAULT_NUM_GPUS_PER_WORKER}"
 DEVICE="${DEVICE:=gpu}"
