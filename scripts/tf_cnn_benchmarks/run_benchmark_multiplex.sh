@@ -34,7 +34,6 @@ if [[ "$NUM_GPUS_PER_WORKER" == 0 ]]; then
   export DEVICE="cpu"
   export LOCAL_PARAMETER_DEVICE="cpu"
   export DATA_FORMAT="NHWC"
-  export BYPASS_GPU_TEST="true"
 elif [[ -n "$CUDA_VISIBLE_DEVICES" ]]; then
   # Decide which GPUs each worker gets, e.g. if CUDA_VISIBLE_DEVICES is "0,1,2,3" and
   # NUM_GPUS_PER_WORKER is 2, then CUDA_VISIBLE_DEVICES_PER_WORKER will be ("0,1", "2,3").
