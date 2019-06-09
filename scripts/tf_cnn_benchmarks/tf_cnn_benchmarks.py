@@ -24,7 +24,6 @@ from absl import app
 from absl import flags as absl_flags
 import tensorflow as tf
 
-import autoscaling_client
 import benchmark_cnn
 import cnn_util
 import flags
@@ -54,8 +53,6 @@ def main(positional_arguments):
   tfversion = cnn_util.tensorflow_version_tuple()
   log_fn('TensorFlow:  %i.%i' % (tfversion[0], tfversion[1]))
 
-  autoscaling_port = int(params.host_port.split(":")[-1]) + autoscaling_client.RPC_PORT_OFFSET
-  bench.listen_for_autoscaling_requests(autoscaling_port)
   bench.print_info()
   bench.run()
 

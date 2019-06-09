@@ -4,40 +4,77 @@ import copy
 import json
 import xmlrpc.client
 import sys
+import time
 
 
 # Offset between autoscaling RPC port and gRPC port
 RPC_PORT_OFFSET = 7000
+# How much time to wait before retrying a failed RPC
+RETRY_INTERVAL_SECONDS = 1
+# Are we running in a shell?
+RUNNING_IN_SHELL = sys.__stdin__.isatty()
 
-def connect(host_port, convert_port=False):
+
+def log_fn(msg):
+  msg = "[Autoscaling client]: %s" % msg
+  if RUNNING_IN_SHELL:
+    print(msg)
+  else:
+    import cnn_util
+    cnn_util.log_fn(msg)
+
+def convert_port(host_port):
+  '''
+  Helper method to convert a gRPC port to an autoscaling service port.
+  '''
+  split = host_port.split(":")
+  new_port = int(split[1]) + RPC_PORT_OFFSET
+  return "%s:%s" % (split[0], new_port)
+
+def connect(host_port):
   '''
   Connect to the given host port and return the corresponding ServerProxy object.
+
   If `convert_port` is true, convert the gRPC port to an autoscaling RPC port.
+  This method retries indefinitely until success.
   '''
-  if convert_port:
-    split = host_port.split(":")
-    new_port = int(split[1]) + RPC_PORT_OFFSET
-    host_port = "%s:%s" % (split[0], new_port)
   if not host_port.startswith("http://"):
     host_port = "http://%s" % host_port
-  return xmlrpc.client.ServerProxy(host_port)
+  log_fn("Connecting to autoscaling server at %s" % host_port)
+  server = xmlrpc.client.ServerProxy(host_port)
+  while True:
+    try:
+      # The connection is not complete until we can access the server's methods
+      server.system.listMethods()
+      log_fn("Connected to autoscaling server at %s!" % host_port)
+      return server
+    except (ConnectionRefusedError, OSError) as e:
+      log_fn("... connection to %s failed, trying again in %s second(s)"\
+        % (host_port, RETRY_INTERVAL_SECONDS))
+      time.sleep(RETRY_INTERVAL_SECONDS)
+    except Exception as e:
+      log_fn("Unexpected error %s (%s)" % (e, type(e)))
+      raise e
+
 
 class AutoscalingClient:
 
   def __init__(self, starting_host_port):
+    self.starting_host_port = starting_host_port
+    self.reset()
+
+  def reset(self):
     '''
     Open a connection to each server in the system, found by fetching
     the cluster spec from the given starting host port.
     '''
-    print("Connecting to server at %s" % starting_host_port)
-    starting_server = connect(starting_host_port)
+    starting_server = connect(self.starting_host_port)
     cluster_spec = starting_server.get_cluster_spec()
     cluster_spec = json.loads(cluster_spec)
-    print("Fetched cluster spec: %s" % cluster_spec)
+    log_fn("Fetched cluster spec from server %s: %s" % (self.starting_host_port, cluster_spec))
     ps_hosts = cluster_spec["ps"] if "ps" in cluster_spec else []
     worker_hosts = cluster_spec["worker"] if "worker" in cluster_spec else []
     host_ports = ps_hosts + worker_hosts
-    print("Parsed the following host ports from cluster spec: %s" % host_ports)
     self._cluster_spec = cluster_spec
     self._servers = {}
 
@@ -62,15 +99,8 @@ class AutoscalingClient:
     # If there are workers we know about but haven't connected to yet, connect to them
     if len(self.hosts) > len(self._servers):
       pending_hosts = list(set(self.hosts) - set(self._servers.keys()))
-      failed_hosts = []
       for hp in pending_hosts:
-        try:
-          self._servers[hp] = connect(hp, convert_port=True)
-        except ConnectionRefusedError:
-          failed_hosts.append(hp)
-      # Fail if there were any hosts we couldn't connect to
-      if len(failed_hosts) > 0:
-        raise Exception("Unable to connect to the following hosts. Try again later.\n%s" % failed_hosts)
+        self._servers[hp] = connect(convert_port(hp))
     # Otherwise, if there are expired workers, remove them
     elif len(self.hosts) < len(self._servers):
       expired_hosts = list(set(self._servers.keys()) - set(self.hosts))
@@ -80,7 +110,21 @@ class AutoscalingClient:
     if len(self.hosts) != len(self._servers):
       raise ValueError("Number of hosts is different from number of server proxies!\n" +
         "Hosts: %s\nServer proxies: %s" % (self.hosts, self._servers.keys()))
-    return self._servers.values()
+    return list(self._servers.values())
+
+  def sync_cluster_spec(self):
+    '''
+    Block until we have the same cluster_spec as everyone in the cluster.
+    '''
+    my_cluster_spec = json.dumps(self._cluster_spec)
+    log_fn("Attempting to sync cluster_spec with everyone: %s" % my_cluster_spec)
+    while True:
+      if all([server.get_cluster_spec() == my_cluster_spec for server in self.servers]):
+        log_fn("cluster_spec synced: %s" % my_cluster_spec)
+        return
+      log_fn("... cluster_spec sync failed, trying again in %s second(s)"\
+        % RETRY_INTERVAL_SECONDS)
+      time.sleep(RETRY_INTERVAL_SECONDS)
 
   def add_worker(self, host_port):
     '''
@@ -101,7 +145,7 @@ class AutoscalingClient:
     known_host_ports = [hp for hp in host_ports if hp in self.worker_hosts]
     new_host_ports = [hp for hp in host_ports if hp not in self.worker_hosts]
     if len(known_host_ports) > 0:
-      print("Warning: not adding the following workers because they already exist: %s" % known_host_ports)
+      log_fn("Warning: not adding the following workers because they already exist: %s" % known_host_ports)
     for server in self.servers:
       server.add_workers(new_host_ports)
     self._cluster_spec["worker"].extend(new_host_ports)
@@ -113,7 +157,7 @@ class AutoscalingClient:
     known_host_ports = [hp for hp in host_ports if hp in self.worker_hosts]
     new_host_ports = [hp for hp in host_ports if hp not in self.worker_hosts]
     if len(new_host_ports) > 0:
-      print("Warning: not removing the following workers because they are not known to us: %s" % new_host_ports)
+      log_fn("Warning: not removing the following workers because they are not known to us: %s" % new_host_ports)
     for server in self.servers:
       server.remove_workers(host_ports)
     for hp in known_host_ports:

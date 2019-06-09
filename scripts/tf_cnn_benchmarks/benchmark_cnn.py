@@ -30,7 +30,6 @@ import re
 import threading
 import time
 import traceback
-import xmlrpc.server
 
 from absl import flags as absl_flags
 import numpy as np
@@ -46,7 +45,8 @@ import flags
 import ksync_optimizer
 import variable_mgr
 import variable_mgr_util
-from autoscaling_service import AutoscalingService
+import autoscaling_client
+import autoscaling_service
 from cnn_util import log_fn
 from models import model_config
 from platforms import util as platforms_util
@@ -649,7 +649,6 @@ flags.DEFINE_string('benchmark_test_id', None,
 
 # Required for autoscaling
 flags.DEFINE_string('host_port', None, 'Don\'t set this!')
-flags.DEFINE_string('cluster_spec', None, 'Don\'t set this!')
 
 platforms_util.define_platform_params()
 
@@ -1076,7 +1075,6 @@ def merge_params_with_slurm(flag_values):
       flag_values["ps_hosts"] = ",".join(ps_hosts)
       flag_values["job_name"] = my_job_name
     flag_values["host_port"] = my_host_port
-    flag_values["cluster_spec"] = json.dumps(cluster)
   return flag_values
 
 
@@ -1450,6 +1448,11 @@ class BenchmarkCNN(object):
     self.should_restart = False
     self.should_terminate = False
     self.initialize()
+    # Start autoscaling service
+    autoscaling_port = int(autoscaling_client.convert_port(params.host_port).split(":")[-1])
+    autoscaling_service.listen_for_autoscaling_requests(self, autoscaling_port)
+    # Start autoscaling client, choose self as starting server
+    self.autoscaling_client = autoscaling_client.AutoscalingClient("localhost:%s" % autoscaling_port)
 
   def reinitialize(self):
     log_fn("AUTOSCALING(reinitialize)")
@@ -1458,6 +1461,8 @@ class BenchmarkCNN(object):
     self.initialize()
     self.num_warmup_batches = 0
     self.should_restart = False
+    # Need to reset autoscaling client here because we may have a new cluster_spec
+    self.autoscaling_client.reset()
 
   def save_variables(self, sess):
     '''Save the values of savable variables (including the global step) to memory.'''
@@ -1888,20 +1893,6 @@ class BenchmarkCNN(object):
           self.model.get_model_name(), benchmark_info['dataset_name'],
           run_param, test_id=self.params.benchmark_test_id)
 
-  # Start a server listening for autoscaling requests
-  # This is a simple RPC server that exposes an interface for external
-  # python processes to adjust the number of workers in a running job
-  def listen_for_autoscaling_requests(self, port):
-    log_fn("Listening for autoscaling requests on port %s" % port)
-    def start_autoscaling_server(port):
-      server = xmlrpc.server.SimpleXMLRPCServer(
-        ('localhost', port), logRequests=True, allow_none=True)
-      server.register_introspection_functions()
-      server.register_multicall_functions()
-      server.register_instance(AutoscalingService(self))
-      server.serve_forever()
-    threading.Thread(target=start_autoscaling_server, args=(port,)).start()
-
   def run(self):
     """Run the benchmark task assigned to this process.
 
@@ -1910,6 +1901,9 @@ class BenchmarkCNN(object):
     Raises:
        ValueError: unrecognized job name.
     """
+    # Upon joining the cluster, first make sure everyone has the same cluster spec
+    self.autoscaling_client.sync_cluster_spec()
+
     if self.params.job_name == 'ps':
       while True:
         log_fn('Running parameter server %s' % self.task_index)
