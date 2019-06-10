@@ -60,8 +60,7 @@ def connect(host_port):
 class AutoscalingClient:
 
   def __init__(self, master_host_port):
-    self.master_host_port = master_host_port
-    self.master_server = connect(self.master_host_port)
+    self.master_server = connect(master_host_port)
     self._cluster_spec = None
     self._servers = None
     self.reset()
@@ -73,7 +72,6 @@ class AutoscalingClient:
     '''
     cluster_spec = self.master_server.get_cluster_spec()
     cluster_spec = json.loads(cluster_spec)
-    log_fn("Fetched cluster spec from server %s: %s" % (self.master_host_port, cluster_spec))
     ps_hosts = cluster_spec["ps"] if "ps" in cluster_spec else []
     worker_hosts = cluster_spec["worker"] if "worker" in cluster_spec else []
     host_ports = ps_hosts + worker_hosts

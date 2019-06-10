@@ -45,8 +45,8 @@ import flags
 import ksync_optimizer
 import variable_mgr
 import variable_mgr_util
-import autoscaling_client
-import autoscaling_service
+from autoscaling_client import convert_port, AutoscalingClient, RETRY_INTERVAL_SECONDS
+from autoscaling_service import listen_for_autoscaling_requests
 from cnn_util import log_fn
 from models import model_config
 from platforms import util as platforms_util
@@ -1449,12 +1449,12 @@ class BenchmarkCNN(object):
     self.should_terminate = False
     self.cluster_manager = None
     # Start autoscaling service
-    autoscaling_port = int(autoscaling_client.convert_port(params.host_port).split(":")[-1])
-    autoscaling_service.listen_for_autoscaling_requests(self, autoscaling_port)
+    autoscaling_port = int(convert_port(params.host_port).split(":")[-1])
+    listen_for_autoscaling_requests(self, autoscaling_port)
     # Start autoscaling client, connected to the autoscaling server on the first worker
     first_worker = self.params.worker_hosts.split(",")[0]
-    first_worker = autoscaling_client.convert_port(first_worker)
-    self.autoscaling_client = autoscaling_client.AutoscalingClient(first_worker)
+    first_worker = convert_port(first_worker)
+    self.autoscaling_client = AutoscalingClient(first_worker)
     self.initialize()
 
   def reinitialize(self):
@@ -1494,31 +1494,51 @@ class BenchmarkCNN(object):
   def sync_cluster_spec(self):
     '''
     Retry until both the following are true
-      (1) We have the same cluster spec as everyone else
-      (2) This cluster spec contains our host name
+      (1) Our cluster spec contains our host name
+      (2) We have the same cluster spec as everyone else
     '''
     log_fn("Attempting to sync cluster spec with everyone")
-    need_to_reinitialize = False
-    while True:
-      my_cluster_spec = json.dumps(self.autoscaling_client.cluster_spec)
-      if self.params.host_port not in self.autoscaling_client.hosts:
-        log_fn("... cluster spec does not contain this host (%s), trying again in %s second(s)" %\
-          (self.params.host_port, autoscaling_client.RETRY_INTERVAL_SECONDS))
-      elif not all([server.get_cluster_spec() == my_cluster_spec for server in self.autoscaling_client.servers]):
-        log_fn("... cluster spec sync failed (%s), trying again in %s second(s)" %\
-          (my_cluster_spec, autoscaling_client.RETRY_INTERVAL_SECONDS))
+    client = self.autoscaling_client
+    success = False
+    while not success:
+      failed = False
+      my_cluster_spec = json.dumps(client.cluster_spec)
+      # (1) Does our cluster spec contain our host name?
+      if self.params.host_port not in client.hosts:
+        log_fn("... cluster spec does not contain this host (%s), trying again in %s seconds(s)" %\
+          (self.params.host_port, RETRY_INTERVAL_SECONDS))
+        failed = True
       else:
+        # (2) Do we have the same cluster spec as everyone else?
+        for server in client.servers:
+          their_cluster_spec = server.get_cluster_spec()
+          if my_cluster_spec != their_cluster_spec:
+            log_fn("... cluster spec sync failed, trying again in %s seconds(s)" % RETRY_INTERVAL_SECONDS)
+            failed = True
+      if not failed:
         log_fn("cluster spec synced: %s" % my_cluster_spec)
-        if need_to_reinitialize:
-          self.reinitialize()
         return
-      # On failure, reset client with cluster spec from the master autoscaling server
-      time.sleep(autoscaling_client.RETRY_INTERVAL_SECONDS)
-      self.autoscaling_client.reset()
-      self.params = self.params._replace(
-        ps_hosts=",".join(self.autoscaling_client.ps_hosts),
-        worker_hosts=",".join(self.autoscaling_client.worker_hosts))
-      need_to_reinitialize = True
+      else:
+        # On failure, reset client with cluster spec from the master autoscaling server
+        time.sleep(RETRY_INTERVAL_SECONDS)
+        client.reset()
+        self.apply_cluster_spec(client.cluster_spec)
+
+  def apply_cluster_spec(self, cluster_spec):
+    '''
+    Update our params to match the provided cluster spec (python dict).
+    '''
+    ps_hosts = cluster_spec["ps"]
+    worker_hosts = cluster_spec["worker"]
+    if self.params.host_port in worker_hosts:
+      task_index = worker_hosts.index(self.params.host_port)
+    else:
+      task_index = self.params.task_index
+    # TODO: also update batch size
+    self.params = self.params._replace(
+      ps_hosts=",".join(ps_hosts),
+      worker_hosts=",".join(worker_hosts),
+      task_index=task_index)
 
   def initialize(self):
     # Make sure we have the same cluster membership information as everyone else
