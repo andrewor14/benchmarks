@@ -59,19 +59,21 @@ def connect(host_port):
 
 class AutoscalingClient:
 
-  def __init__(self, starting_host_port):
-    self.starting_host_port = starting_host_port
+  def __init__(self, master_host_port):
+    self.master_host_port = master_host_port
+    self.master_server = connect(self.master_host_port)
+    self._cluster_spec = None
+    self._servers = None
     self.reset()
 
   def reset(self):
     '''
-    Open a connection to each server in the system, found by fetching
-    the cluster spec from the given starting host port.
+    Open a connection to each server in the system, found by fetching the cluster spec
+    from the given master host port.
     '''
-    starting_server = connect(self.starting_host_port)
-    cluster_spec = starting_server.get_cluster_spec()
+    cluster_spec = self.master_server.get_cluster_spec()
     cluster_spec = json.loads(cluster_spec)
-    log_fn("Fetched cluster spec from server %s: %s" % (self.starting_host_port, cluster_spec))
+    log_fn("Fetched cluster spec from server %s: %s" % (self.master_host_port, cluster_spec))
     ps_hosts = cluster_spec["ps"] if "ps" in cluster_spec else []
     worker_hosts = cluster_spec["worker"] if "worker" in cluster_spec else []
     host_ports = ps_hosts + worker_hosts
@@ -80,15 +82,19 @@ class AutoscalingClient:
 
   @property
   def ps_hosts(self):
-    return self._cluster_spec["ps"]
+    return self._cluster_spec["ps"].copy()
 
   @property
   def worker_hosts(self):
-    return self._cluster_spec["worker"]
+    return self._cluster_spec["worker"].copy()
 
   @property
   def hosts(self):
     return self.ps_hosts + self.worker_hosts
+
+  @property
+  def cluster_spec(self):
+    return copy.deepcopy(self._cluster_spec)
 
   @property
   def servers(self):
@@ -111,20 +117,6 @@ class AutoscalingClient:
       raise ValueError("Number of hosts is different from number of server proxies!\n" +
         "Hosts: %s\nServer proxies: %s" % (self.hosts, self._servers.keys()))
     return list(self._servers.values())
-
-  def sync_cluster_spec(self):
-    '''
-    Block until we have the same cluster_spec as everyone in the cluster.
-    '''
-    my_cluster_spec = json.dumps(self._cluster_spec)
-    log_fn("Attempting to sync cluster_spec with everyone: %s" % my_cluster_spec)
-    while True:
-      if all([server.get_cluster_spec() == my_cluster_spec for server in self.servers]):
-        log_fn("cluster_spec synced: %s" % my_cluster_spec)
-        return
-      log_fn("... cluster_spec sync failed, trying again in %s second(s)"\
-        % RETRY_INTERVAL_SECONDS)
-      time.sleep(RETRY_INTERVAL_SECONDS)
 
   def add_worker(self, host_port):
     '''
@@ -153,13 +145,26 @@ class AutoscalingClient:
   def remove_workers(self, host_ports):
     '''
     Remove workers identified by the given host_ports from the system.
+    Note: the first worker may not be removed because that's the one we use for syncing cluster membership.
     '''
     known_host_ports = [hp for hp in host_ports if hp in self.worker_hosts]
     new_host_ports = [hp for hp in host_ports if hp not in self.worker_hosts]
     if len(new_host_ports) > 0:
       log_fn("Warning: not removing the following workers because they are not known to us: %s" % new_host_ports)
+    if len(known_host_ports) == 0:
+      log_fn("Warning: not removing any workers")
+      return
+    # Check if there are workers to remove in the first place
+    workers = self._cluster_spec["worker"]
+    if len(workers) == 0:
+      raise ValueError("No workers to remove")
+    # Do not allow removing the first worker
+    first_worker = workers[0]
+    if first_worker in known_host_ports:
+      raise ValueError("Not allowed to remove the first worker %s" % first_worker)
+    # Actually remove
     for server in self.servers:
-      server.remove_workers(host_ports)
+      server.remove_workers(known_host_ports)
     for hp in known_host_ports:
       self._cluster_spec["worker"].remove(hp)
 

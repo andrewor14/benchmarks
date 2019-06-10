@@ -1447,22 +1447,23 @@ class BenchmarkCNN(object):
     self.saved_variables = None
     self.should_restart = False
     self.should_terminate = False
-    self.initialize()
+    self.cluster_manager = None
     # Start autoscaling service
     autoscaling_port = int(autoscaling_client.convert_port(params.host_port).split(":")[-1])
     autoscaling_service.listen_for_autoscaling_requests(self, autoscaling_port)
-    # Start autoscaling client, choose self as starting server
-    self.autoscaling_client = autoscaling_client.AutoscalingClient("localhost:%s" % autoscaling_port)
+    # Start autoscaling client, connected to the autoscaling server on the first worker
+    first_worker = self.params.worker_hosts.split(",")[0]
+    first_worker = autoscaling_client.convert_port(first_worker)
+    self.autoscaling_client = autoscaling_client.AutoscalingClient(first_worker)
+    self.initialize()
 
   def reinitialize(self):
-    log_fn("AUTOSCALING(reinitialize)")
-    tf.reset_default_graph()
-    self.cluster_manager._server.destroy()
+    log_fn("[Autoscaling] reinitializing...")
     self.initialize()
     self.num_warmup_batches = 0
     self.should_restart = False
-    # Need to reset autoscaling client here because we may have a new cluster_spec
-    self.autoscaling_client.reset()
+    tf.reset_default_graph()
+    log_fn("[Autoscaling] reinitialized")
 
   def save_variables(self, sess):
     '''Save the values of savable variables (including the global step) to memory.'''
@@ -1473,7 +1474,7 @@ class BenchmarkCNN(object):
     self.saved_variables = {}
     for i, v in enumerate(savable_variables):
       self.saved_variables[v.name] = values[i]
-    log_fn("AUTOSCALING(save_variables): Just saved a bunch of variables (%s), took %s seconds!" %\
+    log_fn("[Autoscaling] Just saved a bunch of variables (%s), took %s seconds!" %\
       (len(self.saved_variables), save_end - save_start))
 
   def restore_variables_ops(self):
@@ -1484,13 +1485,45 @@ class BenchmarkCNN(object):
       log_fn("Error: %s" % error_message)
       raise ValueError(error_message)
     restore_ops = []
-    log_fn("AUTOSCALING(restore_variables_ops): Trying to restore some variables (%s)!" % len(savable_variables))
+    log_fn("[Autoscaling] Trying to restore some variables (%s)!" % len(savable_variables))
     for v in savable_variables:
       if v.name in self.saved_variables:
         restore_ops.append(v.assign(self.saved_variables[v.name]))
     return restore_ops
 
+  def sync_cluster_spec(self):
+    '''
+    Retry until both the following are true
+      (1) We have the same cluster spec as everyone else
+      (2) This cluster spec contains our host name
+    '''
+    log_fn("Attempting to sync cluster spec with everyone")
+    need_to_reinitialize = False
+    while True:
+      my_cluster_spec = json.dumps(self.autoscaling_client.cluster_spec)
+      if self.params.host_port not in self.autoscaling_client.hosts:
+        log_fn("... cluster spec does not contain this host (%s), trying again in %s second(s)" %\
+          (self.params.host_port, autoscaling_client.RETRY_INTERVAL_SECONDS))
+      elif not all([server.get_cluster_spec() == my_cluster_spec for server in self.autoscaling_client.servers]):
+        log_fn("... cluster spec sync failed (%s), trying again in %s second(s)" %\
+          (my_cluster_spec, autoscaling_client.RETRY_INTERVAL_SECONDS))
+      else:
+        log_fn("cluster spec synced: %s" % my_cluster_spec)
+        if need_to_reinitialize:
+          self.reinitialize()
+        return
+      # On failure, reset client with cluster spec from the master autoscaling server
+      time.sleep(autoscaling_client.RETRY_INTERVAL_SECONDS)
+      self.autoscaling_client.reset()
+      self.params = self.params._replace(
+        ps_hosts=",".join(self.autoscaling_client.ps_hosts),
+        worker_hosts=",".join(self.autoscaling_client.worker_hosts))
+      need_to_reinitialize = True
+
   def initialize(self):
+    # Make sure we have the same cluster membership information as everyone else
+    self.sync_cluster_spec()
+
     # Use the batch size from the command line if specified, otherwise use the
     # model's default batch size.  Scale the benchmark's batch size by the
     # number of GPUs.
@@ -1526,6 +1559,9 @@ class BenchmarkCNN(object):
     self.local_parameter_device_flag = self.params.local_parameter_device
     if self.job_name:
       self.task_index = self.params.task_index
+      # Destroy any existing servers (stop is not enough)
+      if self.cluster_manager is not None:
+        self.cluster_manager._server.destroy()
       self.cluster_manager = platforms_util.get_cluster_manager(
           self.params, create_config_proto(self.params))
       assert isinstance(self.cluster_manager, cnn_util.BaseClusterManager)
@@ -1901,9 +1937,6 @@ class BenchmarkCNN(object):
     Raises:
        ValueError: unrecognized job name.
     """
-    # Upon joining the cluster, first make sure everyone has the same cluster spec
-    self.autoscaling_client.sync_cluster_spec()
-
     if self.params.job_name == 'ps':
       while True:
         log_fn('Running parameter server %s' % self.task_index)
@@ -2410,7 +2443,6 @@ class BenchmarkCNN(object):
         if image_producer is not None:
           image_producer.notify_image_consumption()
     self.init_global_step, = sess.run([graph_info.global_step])
-    log_fn("AUTOSCALING(benchmark_with_session): Starting benchmark at global step = %s" % self.init_global_step)
     if self.job_name and not self.params.cross_replica_sync:
       # TODO(zhengxq): Do we need to use a global step watcher at all?
       global_step_watcher = GlobalStepWatcher(
@@ -2481,9 +2513,9 @@ class BenchmarkCNN(object):
       # TODO: saver is not accurate anymore
       if local_step > 0 and (self.should_restart or self.should_terminate):
         if self.should_terminate:
-          log_fn("AUTOSCALING(benchmark_with_session): Received signal to terminate")
+          log_fn("[Autoscaling] Received signal to terminate")
         else:
-          log_fn("AUTOSCALING(benchmark_with_session): Received signal to restart server")
+          log_fn("[Autoscaling] Received signal to restart server")
           self.save_variables(sess)
         sess.run(graph_info.terminate_op)
         return None
