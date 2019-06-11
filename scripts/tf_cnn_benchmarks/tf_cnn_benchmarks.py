@@ -48,14 +48,10 @@ def main(positional_arguments):
   params = benchmark_cnn.make_params_from_flags()
   params = benchmark_cnn.setup(params)
   bench = benchmark_cnn.BenchmarkCNN(params)
-  log_fn('Params:\n\n%s\n\n' % str(params))
-
   tfversion = cnn_util.tensorflow_version_tuple()
   log_fn('TensorFlow:  %i.%i' % (tfversion[0], tfversion[1]))
-
   bench.print_info()
   bench.run()
-
 
 if __name__ == '__main__':
   app.run(main)  # Raises error on invalid flags, unlike tf.app.run()

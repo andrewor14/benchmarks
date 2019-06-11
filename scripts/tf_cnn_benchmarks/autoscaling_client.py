@@ -74,7 +74,6 @@ class AutoscalingClient:
     cluster_spec = json.loads(cluster_spec)
     ps_hosts = cluster_spec["ps"] if "ps" in cluster_spec else []
     worker_hosts = cluster_spec["worker"] if "worker" in cluster_spec else []
-    host_ports = ps_hosts + worker_hosts
     self._cluster_spec = cluster_spec
     self._servers = {}
 

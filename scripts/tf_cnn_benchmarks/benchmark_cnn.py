@@ -1063,18 +1063,19 @@ def merge_params_with_slurm(flag_values):
   :return: an updated flag_values
   """
   if running_through_slurm():
+    num_parameter_servers = 0
     use_parameter_server = flag_values["variable_update"] == "parameter_server"
-    num_parameter_servers = 1 if use_parameter_server else 0
+    if use_parameter_server:
+      num_parameter_servers = os.getenv("NUM_PARAMETER_SERVERS") or 1
+      num_parameter_servers = int(num_parameter_servers)
     cluster, my_job_name, my_task_index, my_host_port =\
       tf_config_from_slurm(num_parameter_servers, 2222)
-    worker_hosts = cluster["worker"]
-    flag_values["worker_hosts"] = ",".join(worker_hosts)
+    flag_values["job_name"] = my_job_name
     flag_values["task_index"] = my_task_index
-    if use_parameter_server:
-      ps_hosts = cluster["ps"]
-      flag_values["ps_hosts"] = ",".join(ps_hosts)
-      flag_values["job_name"] = my_job_name
     flag_values["host_port"] = my_host_port
+    flag_values["worker_hosts"] = ",".join(cluster["worker"])
+    if num_parameter_servers > 0:
+      flag_values["ps_hosts"] = ",".join(cluster["ps"])
   return flag_values
 
 
@@ -1451,10 +1452,13 @@ class BenchmarkCNN(object):
     # Start autoscaling service
     listen_for_autoscaling_requests(self, convert_port(params.host_port))
     # Start autoscaling client, connected to the autoscaling server on the first worker
-    first_worker = self.params.worker_hosts.split(",")[0]
-    first_worker = convert_port(first_worker)
+    first_worker = os.getenv("AUTOSCALING_MASTER_HOST_PORT")
+    if first_worker is None:
+      first_worker = self.params.worker_hosts.split(",")[0]
+      first_worker = convert_port(first_worker)
     self.autoscaling_client = AutoscalingClient(first_worker)
     self.initialize()
+    log_fn("Done initializing:\n\n%s\n\n" % str(self.params))
 
   def reinitialize(self):
     log_fn("[Autoscaling] reinitializing...")

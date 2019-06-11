@@ -31,6 +31,7 @@ MEMORY_PER_NODE="${MEMORY_PER_NODE:=$DEFAULT_MEMORY_PER_NODE}"
 TIME_LIMIT_HOURS="${TIME_LIMIT_HOURS:=144}"
 
 # If we're not using GPUs, set the right flags so tensorflow knows
+NUM_GPUS_PER_WORKER="${NUM_GPUS_PER_WORKER:=$DEFAULT_NUM_GPUS_PER_WORKER}"
 if [[ "$NUM_GPUS_PER_WORKER" == 0 ]]; then
   export DEVICE="cpu"
   export LOCAL_PARAMETER_DEVICE="cpu"

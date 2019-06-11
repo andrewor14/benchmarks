@@ -34,6 +34,9 @@ class AutoscalingService:
   def __init__(self, benchmark_cnn):
     self.benchmark_cnn = benchmark_cnn
 
+  def get_params(self):
+    return str(self.benchmark_cnn.params)
+
   def get_cluster_spec(self):
     params = self.benchmark_cnn.params
     cluster_spec = cnn_util.make_cluster_spec(params)
