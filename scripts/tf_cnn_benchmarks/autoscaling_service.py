@@ -10,16 +10,17 @@ import cnn_util
 def log_fn(msg):
   cnn_util.log_fn("[Autoscaling service]: %s" % msg)
 
-def listen_for_autoscaling_requests(benchmark_cnn, port):
+def listen_for_autoscaling_requests(benchmark_cnn, host_port):
   '''
   Start a server listening for autoscaling requests
 
   This is a simple RPC server that exposes an interface for adjusting
   the number of workers in a running job.
   '''
-  log_fn("Listening for autoscaling requests on port %s" % port)
+  log_fn("Listening for autoscaling requests on host port %s" % host_port)
+  split = host_port.split(":")
   server = xmlrpc.server.SimpleXMLRPCServer(
-    ('localhost', port), logRequests=False, allow_none=True)
+    (split[0], int(split[1])), logRequests=False, allow_none=True)
   server.register_introspection_functions()
   server.register_multicall_functions()
   server.register_instance(AutoscalingService(benchmark_cnn))

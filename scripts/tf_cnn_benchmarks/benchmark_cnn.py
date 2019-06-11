@@ -1449,8 +1449,7 @@ class BenchmarkCNN(object):
     self.should_terminate = False
     self.cluster_manager = None
     # Start autoscaling service
-    autoscaling_port = int(convert_port(params.host_port).split(":")[-1])
-    listen_for_autoscaling_requests(self, autoscaling_port)
+    listen_for_autoscaling_requests(self, convert_port(params.host_port))
     # Start autoscaling client, connected to the autoscaling server on the first worker
     first_worker = self.params.worker_hosts.split(",")[0]
     first_worker = convert_port(first_worker)
