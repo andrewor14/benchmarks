@@ -72,17 +72,16 @@ class AutoscalingClient:
     '''
     cluster_spec = self.master_server.get_cluster_spec()
     cluster_spec = json.loads(cluster_spec)
-    ps_hosts = cluster_spec["ps"] if "ps" in cluster_spec else []
-    worker_hosts = cluster_spec["worker"] if "worker" in cluster_spec else []
     self._cluster_spec = cluster_spec
     self._servers = {}
 
   @property
   def ps_hosts(self):
-    return self._cluster_spec["ps"].copy()
+    return self._cluster_spec["ps"].copy() if "ps" in self._cluster_spec else []
 
   @property
   def worker_hosts(self):
+    # Assume there will always be at least one worker
     return self._cluster_spec["worker"].copy()
 
   @property

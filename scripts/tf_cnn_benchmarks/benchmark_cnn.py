@@ -1065,12 +1065,14 @@ def merge_params_with_slurm(flag_values):
   if running_through_slurm():
     num_parameter_servers = 0
     use_parameter_server = flag_values["variable_update"] == "parameter_server"
+    use_horovod = flag_values["variable_update"] == "horovod"
     if use_parameter_server:
       num_parameter_servers = os.getenv("NUM_PARAMETER_SERVERS") or 1
       num_parameter_servers = int(num_parameter_servers)
     cluster, my_job_name, my_task_index, my_host_port =\
       tf_config_from_slurm(num_parameter_servers, 2222)
-    flag_values["job_name"] = my_job_name
+    if not use_horovod:
+      flag_values["job_name"] = my_job_name
     flag_values["task_index"] = my_task_index
     flag_values["host_port"] = my_host_port
     flag_values["worker_hosts"] = ",".join(cluster["worker"])
@@ -1531,7 +1533,7 @@ class BenchmarkCNN(object):
     '''
     Update our params to match the provided cluster spec (python dict).
     '''
-    ps_hosts = cluster_spec["ps"]
+    ps_hosts = cluster_spec["ps"] if "ps" in cluster_spec else []
     worker_hosts = cluster_spec["worker"]
     if self.params.host_port in worker_hosts:
       task_index = worker_hosts.index(self.params.host_port)
@@ -1687,7 +1689,6 @@ class BenchmarkCNN(object):
         self.params.variable_update != 'parameter_server'):
       raise ValueError('staged_vars for now is only supported with '
                        'variable_update=parameter_server')
-
     if self.params.variable_update == 'parameter_server':
       if self.job_name:
         if not self.params.staged_vars:
