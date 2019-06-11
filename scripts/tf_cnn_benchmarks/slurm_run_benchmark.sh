@@ -13,11 +13,13 @@
 source common_configs.sh
 
 # Run configs
-RUN_TAG="${RUN_TAG:=benchmark}"
 RUN_PATH="$BENCHMARK_DIR/run_with_env.sh"
 SCRIPT_NAME="${SCRIPT_NAME:=run_benchmark.sh}"
-SUBMIT_TIMESTAMP="$(get_submit_timestamp)"
-export JOB_NAME="${RUN_TAG}-${SUBMIT_TIMESTAMP}"
+if [[ -z "$JOB_NAME" ]]; then
+  SUBMIT_TIMESTAMP="$(get_submit_timestamp)"
+  RUN_TAG="${RUN_TAG:=benchmark}"
+  export JOB_NAME="${RUN_TAG}-${SUBMIT_TIMESTAMP}"
+fi
 
 # Slurm specific configs
 # Note: we always launch 1 task per node; in multiplex mode, this task
@@ -98,7 +100,7 @@ fi
 if [[ "$SERVER_PROTOCOL" == *"mpi"* ]]; then
   RUN_COMMAND="mpirun --output-filename $LOG_DIR/$JOB_NAME $RUN_PATH $SCRIPT_NAME"
 else
-  RUN_COMMAND="srun --output=$LOG_DIR/$JOB_NAME.out $RUN_PATH $SCRIPT_NAME"
+  RUN_COMMAND="srun --output=$LOG_DIR/$JOB_NAME-%n.out $RUN_PATH $SCRIPT_NAME"
 fi
 
 sbatch\

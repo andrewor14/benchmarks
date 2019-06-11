@@ -53,6 +53,8 @@ elif [[ "$ENVIRONMENT" == "ns" ]]; then
   export DEFAULT_NUM_GPUS_PER_NODE="0"
   export DEFAULT_NUM_CPUS_PER_NODE="16"
   export DEFAULT_MEMORY_PER_NODE="60G"
+  # No GPUs on this cluster
+  export BYPASS_GPU_TEST="true"
 elif [[ "$ENVIRONMENT" = "snsgpu" ]]; then
   export LOG_DIR="/home/andrew/Documents/dev/logs"
   export BENCHMARK_DIR="/home/andrew/Documents/dev/benchmarks/scripts/tf_cnn_benchmarks"
