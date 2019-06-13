@@ -1452,24 +1452,46 @@ class BenchmarkCNN(object):
     self.should_terminate = False
     self.cluster_manager = None
     self.global_batch_size = None
-    # Start autoscaling service
-    listen_for_autoscaling_requests(self, convert_port(params.host_port))
-    # Start autoscaling client, connected to the autoscaling server on the first worker
-    first_worker = os.getenv("AUTOSCALING_MASTER_HOST_PORT")
-    if first_worker is None:
-      first_worker = self.params.worker_hosts.split(",")[0]
-      first_worker = convert_port(first_worker)
-    self.autoscaling_client = AutoscalingClient(first_worker)
-    self.initialize()
-    log_fn("Done initializing:\n\n%s\n\n" % str(self.params))
+    self.autoscaling_client = None
+    # A lock for initializing, held before the first initializing is done and during
+    # every subsequent reinitialization thereafter
+    self.initialize_lock = threading.Lock()
+    self.initialize_lock.acquire()
+    try:
+      # Start autoscaling service
+      listen_for_autoscaling_requests(self, convert_port(params.host_port))
+      # Start autoscaling client, connected to the autoscaling server on the first worker
+      first_worker = os.getenv("AUTOSCALING_MASTER_HOST_PORT")
+      if first_worker is None:
+        first_worker = self.params.worker_hosts.split(",")[0]
+        first_worker = convert_port(first_worker)
+      self.autoscaling_client = AutoscalingClient(first_worker)
+      # Request to join the cluster
+      self.autoscaling_client.master_server.join_cluster(self.params.host_port)
+      self.initialize()
+      log_fn("Done initializing:\n\n%s\n\n" % str(self.params))
+    except Exception as e:
+      import traceback
+      log_fn("Error during initialization: %s (%s)" % (e, e.__class__.__name__))
+      traceback.print_exc()
+    finally:
+      self.initialize_lock.release()
 
   def reinitialize(self):
     log_fn("[Autoscaling] reinitializing...")
-    self.initialize()
-    self.num_warmup_batches = 0
-    self.should_restart = False
-    tf.reset_default_graph()
-    log_fn("[Autoscaling] reinitialized")
+    self.initialize_lock.acquire()
+    try:
+      self.initialize()
+      self.num_warmup_batches = 0
+      self.should_restart = False
+      tf.reset_default_graph()
+      log_fn("[Autoscaling] reinitialized")
+    except Exception as e:
+      import traceback
+      log_fn("Error during reinitialization: %s (%s)" % (e, e.__class__.__name__))
+      traceback.print_exc()
+    finally:
+      self.initialize_lock.release()
 
   def save_variables(self, sess):
     '''Save the values of savable variables (including the global step) to memory.'''
@@ -1502,6 +1524,8 @@ class BenchmarkCNN(object):
     Retry until both the following are true
       (1) Our cluster spec contains our host name
       (2) We have the same cluster spec as everyone else
+
+    The caller must hold `self.initialize_lock`.
     '''
     log_fn("Attempting to sync cluster spec with everyone")
     client = self.autoscaling_client
@@ -1533,6 +1557,7 @@ class BenchmarkCNN(object):
   def apply_cluster_spec(self, cluster_spec):
     '''
     Update our params to match the provided cluster spec (python dict).
+    The caller must hold `self.initialize_lock`.
     '''
     ps_hosts = cluster_spec["ps"] if "ps" in cluster_spec else []
     worker_hosts = cluster_spec["worker"]
@@ -1553,6 +1578,9 @@ class BenchmarkCNN(object):
       self.params = self.params._replace(batch_size=per_device_batch_size)
 
   def initialize(self):
+    '''
+    Initialize this benchmark, must be called while holding `self.initialize_lock`.
+    '''
     # Make sure we have the same cluster membership information as everyone else
     self.sync_cluster_spec()
 

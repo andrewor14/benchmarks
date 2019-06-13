@@ -60,6 +60,7 @@ def connect(host_port):
 class AutoscalingClient:
 
   def __init__(self, master_host_port):
+    self.master_host_port = master_host_port
     self.master_server = connect(master_host_port)
     self._cluster_spec = None
     self._servers = None
@@ -102,7 +103,12 @@ class AutoscalingClient:
     if len(self.hosts) > len(self._servers):
       pending_hosts = list(set(self.hosts) - set(self._servers.keys()))
       for hp in pending_hosts:
-        self._servers[hp] = connect(convert_port(hp))
+        # Reuse the connection to the master server
+        converted_hp = convert_port(hp)
+        if converted_hp == self.master_host_port:
+          self._servers[hp] = self.master_server
+        else:
+          self._servers[hp] = connect(converted_hp)
     # Otherwise, if there are expired workers, remove them
     elif len(self.hosts) < len(self._servers):
       expired_hosts = list(set(self._servers.keys()) - set(self.hosts))
