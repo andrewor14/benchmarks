@@ -42,6 +42,9 @@ class AutoscalingService:
     cluster_spec = cnn_util.make_cluster_spec(params)
     return json.dumps(cluster_spec)
 
+  def get_global_batch_size(self):
+    return self.benchmark_cnn.global_batch_size
+
   def add_workers(self, host_ports):
     log_fn("Adding these workers %s" % host_ports)
     cluster_spec = cnn_util.make_cluster_spec(self.benchmark_cnn.params)

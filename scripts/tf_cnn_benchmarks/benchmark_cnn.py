@@ -1451,6 +1451,7 @@ class BenchmarkCNN(object):
     self.should_restart = False
     self.should_terminate = False
     self.cluster_manager = None
+    self.global_batch_size = None
     # Start autoscaling service
     listen_for_autoscaling_requests(self, convert_port(params.host_port))
     # Start autoscaling client, connected to the autoscaling server on the first worker
@@ -1539,11 +1540,17 @@ class BenchmarkCNN(object):
       task_index = worker_hosts.index(self.params.host_port)
     else:
       task_index = self.params.task_index
-    # TODO: also update batch size
     self.params = self.params._replace(
       ps_hosts=",".join(ps_hosts),
       worker_hosts=",".join(worker_hosts),
       task_index=task_index)
+    # Calculate new per device batch size from old global batch size
+    # If we're joining an existing cluster, just get it from the master
+    if self.global_batch_size is None:
+      self.global_batch_size = self.autoscaling_client.master_server.get_global_batch_size()
+    if self.global_batch_size is not None:
+      per_device_batch_size = int(self.global_batch_size * 1.0 / len(worker_hosts) / self.num_gpus)
+      self.params = self.params._replace(batch_size=per_device_batch_size)
 
   def initialize(self):
     # Make sure we have the same cluster membership information as everyone else
@@ -1624,6 +1631,9 @@ class BenchmarkCNN(object):
       raise ValueError('--all_reduce_spec=nccl is invalid in a '
                        'multi-worker job')
 
+    # Fix global batch size across restarts
+    self.global_batch_size = self.global_batch_size or self.batch_size * self.num_workers
+
     # Device to use for ops that need to always run on the local worker's CPU.
     self.cpu_device = '%s/cpu:0' % worker_prefix
 
@@ -1636,7 +1646,7 @@ class BenchmarkCNN(object):
 
     subset = 'validation' if self.params.eval else 'train'
     self.num_batches, self.num_epochs = get_num_batches_and_epochs(
-        self.params, self.batch_size * self.num_workers,
+        self.params, self.global_batch_size,
         self.dataset.num_examples_per_epoch(subset))
     if self.mode in (constants.BenchmarkMode.EVAL,
                      constants.BenchmarkMode.TRAIN_AND_EVAL):
@@ -1650,7 +1660,7 @@ class BenchmarkCNN(object):
             num_batches=self.params.num_eval_batches,
             num_epochs=self.params.num_eval_epochs)
       self.num_eval_batches, self.num_eval_epochs = get_num_batches_and_epochs(
-          eval_params, self.batch_size * self.num_workers,
+          eval_params, self.global_batch_size,
           self.dataset.num_examples_per_epoch('validation'))
     else:
       self.num_eval_batches, self.num_eval_epochs = None, None
@@ -1873,7 +1883,7 @@ class BenchmarkCNN(object):
     log_fn('Dataset:     %s' % benchmark_info['dataset_name'])
     log_fn('Mode:        %s' % self.mode)
     log_fn('SingleSess:  %s' % benchmark_info['single_session'])
-    log_fn('Batch size:  %s global' % (self.batch_size * self.num_workers))
+    log_fn('Batch size:  %s global' % (self.global_batch_size))
     log_fn('             %s per device' % (self.batch_size /
                                            len(self.raw_devices)))
     if self.batch_group_size > 1:
@@ -3045,7 +3055,7 @@ class BenchmarkCNN(object):
     if (self.params.variable_update == 'horovod' or
         self.params.variable_update == 'collective_all_reduce'):
       # Each worker independently increments global_step.
-      examples_per_step = self.batch_size * self.num_workers
+      examples_per_step = self.global_batch_size
     else:
       # global_step is shared by all workers, and so every iteration
       # global_step is incremented by num_workers.
