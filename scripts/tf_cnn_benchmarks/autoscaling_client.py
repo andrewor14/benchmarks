@@ -73,7 +73,6 @@ class AutoscalingClient:
     from the given master host port.
     '''
     cluster_spec = self.master_server.get_cluster_spec()
-    cluster_spec = json.loads(cluster_spec)
     self._cluster_spec = cluster_spec
     self._servers = {}
 

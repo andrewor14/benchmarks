@@ -1449,15 +1449,30 @@ class BenchmarkCNN(object):
                          '--forward_only and --freeze_when_forward_only is set '
                          'to False')
     self.saved_variables = None
-    self.should_restart = False
-    self.should_terminate = False
     self.cluster_manager = None
     self.global_batch_size = None
     self.autoscaling_client = None
-    # A lock for initializing, held before the first initializing is done and during
-    # every subsequent reinitialization thereafter
-    self.initialize_lock = threading.Lock()
-    self.initialize_lock.acquire()
+
+    # Whether we should restart after the next step
+    # Accesses must be guarded by `self._should_restart_lock`
+    self._should_restart = False
+    self._should_restart_lock = threading.Lock()
+
+    # Whether we should terminate after the next step
+    self.should_terminate = False
+
+    # Epoch number to keep track of cluster membership changes
+    # This does not need a lock because it's only modified in one thread
+    self.autoscaling_epoch = 0
+
+    # The cluster spec to apply next time we reinitialize
+    # Note: We can't apply the new cluster spec right away because doing so will
+    # signal to other workers that they can go ahead and build their graphs, which
+    # might be inconsistent with ours if we haven't finished reinitializing yet.
+    # Accesses must be guarded by `self.pending_cluster_spec_lock`.
+    self.pending_cluster_spec = None
+    self.pending_cluster_spec_lock = threading.Lock()
+
     try:
       # Start autoscaling service
       listen_for_autoscaling_requests(self, convert_port(params.host_port))
@@ -1475,24 +1490,37 @@ class BenchmarkCNN(object):
       import traceback
       log_fn("Error during initialization: %s (%s)" % (e, e.__class__.__name__))
       traceback.print_exc()
-    finally:
-      self.initialize_lock.release()
+      raise e
 
   def reinitialize(self):
     log_fn("[Autoscaling] reinitializing...")
-    self.initialize_lock.acquire()
+    self.should_restart = False
+    tf.reset_default_graph()
+    self.initialize()
+    self.num_warmup_batches = 0
+    log_fn("[Autoscaling] reinitialized")
+
+  @property
+  def should_restart(self):
+    '''
+    Atomic getter for `self._should_restart`, guarded by `self._should_restart_lock`.
+    '''
     try:
-      self.initialize()
-      self.num_warmup_batches = 0
-      self.should_restart = False
-      tf.reset_default_graph()
-      log_fn("[Autoscaling] reinitialized")
-    except Exception as e:
-      import traceback
-      log_fn("Error during reinitialization: %s (%s)" % (e, e.__class__.__name__))
-      traceback.print_exc()
+      self._should_restart_lock.acquire()
+      return self._should_restart
     finally:
-      self.initialize_lock.release()
+      self._should_restart_lock.release()
+
+  @should_restart.setter
+  def should_restart(self, should_restart):
+    '''
+    Atomic setter for `self._should_restart`, guarded by `self._should_restart_lock`.
+    '''
+    try:
+      self._should_restart_lock.acquire()
+      self._should_restart = should_restart
+    finally:
+      self._should_restart_lock.release()
 
   def save_variables(self, sess):
     '''Save the values of savable variables (including the global step) to memory.'''
@@ -1522,35 +1550,44 @@ class BenchmarkCNN(object):
 
   def sync_cluster_spec(self):
     '''
-    Retry until both the following are true
-      (1) Our cluster spec contains our host name
-      (2) We have the same cluster spec as everyone else
-
-    The caller must hold `self.initialize_lock`.
+    Retry until all the following are true
+      (1) Everyone's epoch is greater than or equal to mine
+      (2) Our cluster spec contains our host name
+      (3) We have the same cluster spec as everyone else
     '''
     log_fn("Attempting to sync cluster spec with everyone")
+    self.autoscaling_epoch += 1
     client = self.autoscaling_client
-    success = False
-    while not success:
-      failed = False
+    while True:
+      failure_message = None
       my_cluster_spec = json.dumps(client.cluster_spec)
-      # (1) Does our cluster spec contain our host name?
-      if self.params.host_port not in client.hosts:
-        log_fn("... cluster spec does not contain this host (%s), trying again in %s seconds(s)" %\
-          (self.params.host_port, AUTOSCALING_RETRY_INTERVAL_SECONDS))
-        failed = True
-      else:
-        # (2) Do we have the same cluster spec as everyone else?
+
+      # (1) Is everyone on an epoch greater than or equal to mine?
+      epochs = [server.get_epoch() for server in client.servers]
+      max_epoch = max(epochs)
+      if max_epoch > self.autoscaling_epoch:
+        self.autoscaling_epoch = max_epoch
+      if not all([e >= self.autoscaling_epoch for e in epochs]):
+        failure_message = "... not everyone has reached my epoch (%s) yet: %s" % (self.autoscaling_epoch, epochs)
+
+      # (2) Does our cluster spec contain our host name?
+      if not failure_message and self.params.host_port not in client.hosts:
+        failure_message = "... cluster spec does not contain this host (%s)" % self.params.host_port
+
+      # (3) Do we have the same cluster spec as everyone else?
+      if not failure_message:
         for server in client.servers:
-          their_cluster_spec = server.get_cluster_spec()
+          their_cluster_spec = json.dumps(server.get_cluster_spec())
           if my_cluster_spec != their_cluster_spec:
-            log_fn("... cluster spec sync failed, trying again in %s seconds(s)" % AUTOSCALING_RETRY_INTERVAL_SECONDS)
-            failed = True
-      if not failed:
+            failure_message = "... cluster spec sync failed"
+
+      # If no failure, we pass
+      if not failure_message:
         log_fn("cluster spec synced: %s" % my_cluster_spec)
         return
       else:
         # On failure, reset client with cluster spec from the master autoscaling server
+        log_fn("%s, trying again in %s second(s)" % (failure_message, AUTOSCALING_RETRY_INTERVAL_SECONDS))
         time.sleep(AUTOSCALING_RETRY_INTERVAL_SECONDS)
         client.reset()
         self.apply_cluster_spec(client.cluster_spec)
@@ -1558,7 +1595,6 @@ class BenchmarkCNN(object):
   def apply_cluster_spec(self, cluster_spec):
     '''
     Update our params to match the provided cluster spec (python dict).
-    The caller must hold `self.initialize_lock`.
     '''
     ps_hosts = cluster_spec["ps"] if "ps" in cluster_spec else []
     worker_hosts = cluster_spec["worker"]
@@ -1579,9 +1615,15 @@ class BenchmarkCNN(object):
       self.params = self.params._replace(batch_size=per_device_batch_size)
 
   def initialize(self):
-    '''
-    Initialize this benchmark, must be called while holding `self.initialize_lock`.
-    '''
+    # If we have an updated cluster spec, apply it first
+    try:
+      self.pending_cluster_spec_lock.acquire()
+      if self.pending_cluster_spec is not None:
+        self.apply_cluster_spec(self.pending_cluster_spec)
+        self.pending_cluster_spec = None
+    finally:
+      self.pending_cluster_spec_lock.release()
+
     # Make sure we have the same cluster membership information as everyone else
     self.sync_cluster_spec()
 
@@ -1836,6 +1878,10 @@ class BenchmarkCNN(object):
             self.terminating_queues.append(tf.FIFOQueue(
               self.num_workers, [tf.bool], shapes=[[]],
               shared_name='terminating_queue_%s' % device))
+
+    # If cluster membership changed during initialization, we need to restart
+    if self.should_restart:
+      self.reinitialize()
 
   @contextlib.contextmanager
   def _do_eval(self):
@@ -2574,7 +2620,7 @@ class BenchmarkCNN(object):
         loop_start_time = time.time()
       # If we received signal to restart, save our variables and return
       # TODO: saver is not accurate anymore
-      if local_step > 0 and (self.should_restart or self.should_terminate):
+      if self.should_restart or self.should_terminate:
         if self.should_terminate:
           log_fn("[Autoscaling] Received signal to terminate")
         else:
