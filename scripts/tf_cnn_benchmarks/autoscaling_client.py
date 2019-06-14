@@ -2,18 +2,18 @@
 
 import copy
 import json
+import os
 import xmlrpc.client
+import re
+import subprocess
 import sys
 import time
 
+from autoscaling_params import *
 
-# Offset between autoscaling RPC port and gRPC port
-RPC_PORT_OFFSET = 7000
-# How much time to wait before retrying a failed RPC
-RETRY_INTERVAL_SECONDS = 1
+
 # Are we running in a shell?
 RUNNING_IN_SHELL = sys.__stdin__.isatty()
-
 
 def log_fn(msg):
   msg = "[Autoscaling client]: %s" % msg
@@ -28,7 +28,7 @@ def convert_port(host_port):
   Helper method to convert a gRPC port to an autoscaling service port.
   '''
   split = host_port.split(":")
-  new_port = int(split[1]) + RPC_PORT_OFFSET
+  new_port = int(split[1]) + AUTOSCALING_RPC_PORT_OFFSET
   return "%s:%s" % (split[0], new_port)
 
 def connect(host_port):
@@ -50,8 +50,8 @@ def connect(host_port):
       return server
     except (ConnectionRefusedError, OSError) as e:
       log_fn("... connection to %s failed, trying again in %s second(s)"\
-        % (host_port, RETRY_INTERVAL_SECONDS))
-      time.sleep(RETRY_INTERVAL_SECONDS)
+        % (host_port, AUTOSCALING_RETRY_INTERVAL_SECONDS))
+      time.sleep(AUTOSCALING_RETRY_INTERVAL_SECONDS)
     except Exception as e:
       log_fn("Unexpected error %s (%s)" % (e, type(e)))
       raise e
@@ -64,6 +64,7 @@ class AutoscalingClient:
     self.master_server = connect(master_host_port)
     self._cluster_spec = None
     self._servers = None
+    self._launch_worker_script = os.getenv(AUTOSCALING_LAUNCH_WORKER_SCRIPT)
     self.reset()
 
   def reset(self):
@@ -169,4 +170,39 @@ class AutoscalingClient:
       server.remove_workers(known_host_ports)
     for hp in known_host_ports:
       self._cluster_spec["worker"].remove(hp)
+
+  def launch_worker(self, args=[], env={}):
+    '''
+    Launch a worker process with the specified arguments and environment variables.
+    '''
+    if self._launch_worker_script is None:
+      raise Exception("Launch worker script is not set.")
+    # Set some necessary variables
+    env = env.copy()
+    user_env = env.copy()
+    env[AUTOSCALING_MASTER_HOST_PORT] = self.master_host_port
+    for var in ["PATH", "LD_LIBRARY_PATH"]:
+      if var in os.environ:
+        env[var] = os.environ[var]
+    # Make the script callable
+    cmd = self._launch_worker_script
+    if "/" not in cmd:
+      cmd = "./%s" % cmd
+    cmd = [cmd] + args
+    # Launch the process
+    log_fn("Launching worker with cmd %s, env = %s" % (cmd, user_env))
+    p = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+    # Print output of launch command
+    message = "Launched worker with cmd %s, env = %s" % (cmd, user_env)
+    indent = "    "
+    if stdout:
+      stdout = stdout.decode("utf-8")
+      stdout = indent + stdout.replace("\n", "\n" + indent)
+      message += ", stdout:\n%s" % stdout
+    if stderr:
+      stderr = stderr.decode("utf-8")
+      stderr = indent + stderr.replace("\n", "\n" + indent)
+      message += "\nstderr:\n%s" % stderr
+    log_fn(message)
 

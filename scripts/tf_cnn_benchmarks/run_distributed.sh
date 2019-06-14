@@ -29,6 +29,7 @@ export BATCH_SIZE=64
 export SERVER_PROTOCOL="grpc"
 export DISPLAY_EVERY="1"
 export AUTOSCALING_DISABLE_CHECKPOINT_RESTORE="true"
+export AUTOSCALING_LAUNCH_WORKER_SCRIPT="$(basename $0)"
 
 # Run it
 ./slurm_run_benchmark.sh

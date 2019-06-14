@@ -45,8 +45,9 @@ import flags
 import ksync_optimizer
 import variable_mgr
 import variable_mgr_util
-from autoscaling_client import convert_port, AutoscalingClient, RETRY_INTERVAL_SECONDS
+from autoscaling_client import convert_port, AutoscalingClient
 from autoscaling_service import listen_for_autoscaling_requests
+from autoscaling_params import *
 from cnn_util import log_fn
 from models import model_config
 from platforms import util as platforms_util
@@ -1461,7 +1462,7 @@ class BenchmarkCNN(object):
       # Start autoscaling service
       listen_for_autoscaling_requests(self, convert_port(params.host_port))
       # Start autoscaling client, connected to the autoscaling server on the first worker
-      first_worker = os.getenv("AUTOSCALING_MASTER_HOST_PORT")
+      first_worker = os.getenv(AUTOSCALING_MASTER_HOST_PORT)
       if first_worker is None:
         first_worker = self.params.worker_hosts.split(",")[0]
         first_worker = convert_port(first_worker)
@@ -1536,21 +1537,21 @@ class BenchmarkCNN(object):
       # (1) Does our cluster spec contain our host name?
       if self.params.host_port not in client.hosts:
         log_fn("... cluster spec does not contain this host (%s), trying again in %s seconds(s)" %\
-          (self.params.host_port, RETRY_INTERVAL_SECONDS))
+          (self.params.host_port, AUTOSCALING_RETRY_INTERVAL_SECONDS))
         failed = True
       else:
         # (2) Do we have the same cluster spec as everyone else?
         for server in client.servers:
           their_cluster_spec = server.get_cluster_spec()
           if my_cluster_spec != their_cluster_spec:
-            log_fn("... cluster spec sync failed, trying again in %s seconds(s)" % RETRY_INTERVAL_SECONDS)
+            log_fn("... cluster spec sync failed, trying again in %s seconds(s)" % AUTOSCALING_RETRY_INTERVAL_SECONDS)
             failed = True
       if not failed:
         log_fn("cluster spec synced: %s" % my_cluster_spec)
         return
       else:
         # On failure, reset client with cluster spec from the master autoscaling server
-        time.sleep(RETRY_INTERVAL_SECONDS)
+        time.sleep(AUTOSCALING_RETRY_INTERVAL_SECONDS)
         client.reset()
         self.apply_cluster_spec(client.cluster_spec)
 
@@ -2436,7 +2437,7 @@ class BenchmarkCNN(object):
       # being called before hook.after_create_session returns
       sess = monitored_session._HookedSession(sess, self._hooks)
 
-      save_local_grads = os.getenv("AUTOSCALING_SAVE_LOCAL_GRADS")
+      save_local_grads = os.getenv(AUTOSCALING_SAVE_LOCAL_GRADS)
       if save_local_grads and save_local_grads.lower() == "true":
         log_fn("Computing first round of local grads to save to file.")
         local_grads = sess.run(self.local_grads)
@@ -3059,7 +3060,7 @@ class BenchmarkCNN(object):
     # AUTOSCALING_SAVE_LOCAL_GRADS to true with 'forward_only' turned off.
     # Note: Sometimes we return from this function early (e.g. forward_only),
     # so here we ensure we always run this by doing it close to the beginning.
-    fake_allreduce_path = os.getenv("AUTOSCALING_FAKE_ALLREDUCE_PATH")
+    fake_allreduce_path = os.getenv(AUTOSCALING_FAKE_ALLREDUCE_PATH)
     if fake_allreduce_path is not None:
       import horovod.tensorflow as hvd
       if self.params.horovod_device:
