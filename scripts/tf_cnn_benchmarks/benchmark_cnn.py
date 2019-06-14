@@ -1458,6 +1458,12 @@ class BenchmarkCNN(object):
     # every subsequent reinitialization thereafter
     self.initialize_lock = threading.Lock()
     self.initialize_lock.acquire()
+    # The cluster spec to apply next time we reinitialize, set only by our autoscaling service.
+    # Note: We shouldn't apply the new cluster spec right away because doing so will signal to
+    # other workers that they can go ahead and build their graphs, which might be inconsistent
+    # with ours if we haven't finished reinitializing yet.
+    # All accesses must be guarded by `self.initialize_lock`.
+    self.pending_cluster_spec = None
     try:
       # Start autoscaling service
       listen_for_autoscaling_requests(self, convert_port(params.host_port))
@@ -1482,6 +1488,9 @@ class BenchmarkCNN(object):
     log_fn("[Autoscaling] reinitializing...")
     self.initialize_lock.acquire()
     try:
+      if self.pending_cluster_spec is not None:
+        self.apply_cluster_spec(self.pending_cluster_spec)
+        self.pending_cluster_spec = None
       self.initialize()
       self.num_warmup_batches = 0
       self.should_restart = False
@@ -2574,7 +2583,7 @@ class BenchmarkCNN(object):
         loop_start_time = time.time()
       # If we received signal to restart, save our variables and return
       # TODO: saver is not accurate anymore
-      if local_step > 0 and (self.should_restart or self.should_terminate):
+      if self.should_restart or self.should_terminate:
         if self.should_terminate:
           log_fn("[Autoscaling] Received signal to terminate")
         else:

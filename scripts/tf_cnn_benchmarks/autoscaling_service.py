@@ -74,13 +74,22 @@ class AutoscalingService:
       self.add_workers([host_port])
     return True
 
+  def _get_or_create_pending_cluster_spec(self):
+    '''
+    Return the existing pending cluster spec or create a new one.
+    The caller must hold `self.benchmark_cnn.initialize_lock`.
+    '''
+    if self.benchmark_cnn.pending_cluster_spec is None:
+      self.benchmark_cnn.pending_cluster_spec =\
+        cnn_util.make_cluster_spec(self.benchmark_cnn.params)
+    return self.benchmark_cnn.pending_cluster_spec
+
   def add_workers(self, host_ports):
     log_fn("Adding these workers %s" % host_ports)
     self.benchmark_cnn.initialize_lock.acquire()
     try:
-      cluster_spec = cnn_util.make_cluster_spec(self.benchmark_cnn.params)
+      cluster_spec = self._get_or_create_pending_cluster_spec()
       cluster_spec["worker"].extend(host_ports)
-      self.benchmark_cnn.apply_cluster_spec(cluster_spec)
       self.benchmark_cnn.should_restart = True
     finally:
       self.benchmark_cnn.initialize_lock.release()
@@ -89,12 +98,11 @@ class AutoscalingService:
     log_fn("Removing these workers %s" % host_ports)
     self.benchmark_cnn.initialize_lock.acquire()
     try:
-      cluster_spec = cnn_util.make_cluster_spec(self.benchmark_cnn.params)
+      cluster_spec = self._get_or_create_pending_cluster_spec()
       for hp in host_ports:
         cluster_spec["worker"].remove(hp)
         if hp == self.benchmark_cnn.params.host_port:
           self.benchmark_cnn.should_terminate = True
-      self.benchmark_cnn.apply_cluster_spec(cluster_spec)
       self.benchmark_cnn.should_restart = True
     finally:
       self.benchmark_cnn.initialize_lock.release()
