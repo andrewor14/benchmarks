@@ -276,7 +276,7 @@ class GrpcClusterManager(BaseClusterManager):
   def get_target(self):
     return self._target
 
-  def join_server(self, terminating_queues=None, graph=None):
+  def join_server(self, terminating_queues=None, graph=None, run_in_background=None):
     """
     Wait for the server to terminate.
 
@@ -297,6 +297,8 @@ class GrpcClusterManager(BaseClusterManager):
                          (len(terminating_queues), self.num_ps()))
       with tf.Session(target=self._target, graph=graph, config=self._config_proto) as sess:
         log_fn("Server %s waiting to dequeue tokens!" % self._task_index)
+        if run_in_background is not None:
+          threading.Thread(target=run_in_background).start()
         for i in range(self.num_workers()):
           sess.run(queue.dequeue())
           log_fn("Server %s dequeued %s/%s tokens!" % (self._task_index, i+1, self.num_workers()))

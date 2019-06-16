@@ -12,7 +12,7 @@ import time
 from autoscaling_params import *
 
 
-# Are we running in a shell?
+VERBOSE = False
 RUNNING_IN_SHELL = sys.__stdin__.isatty()
 
 def log_fn(msg):
@@ -40,17 +40,20 @@ def connect(host_port):
   '''
   if not host_port.startswith("http://"):
     host_port = "http://%s" % host_port
-  log_fn("Connecting to autoscaling server at %s" % host_port)
+  if VERBOSE:
+    log_fn("Connecting to autoscaling server at %s" % host_port)
   server = xmlrpc.client.ServerProxy(host_port)
   while True:
     try:
       # The connection is not complete until we can access the server's methods
       server.system.listMethods()
-      log_fn("Connected to autoscaling server at %s!" % host_port)
+      if VERBOSE:
+        log_fn("Connected to autoscaling server at %s!" % host_port)
       return server
     except (ConnectionRefusedError, OSError) as e:
-      log_fn("... connection to %s failed, trying again in %s second(s)"\
-        % (host_port, AUTOSCALING_RETRY_INTERVAL_SECONDS))
+      if VERBOSE:
+        log_fn("... connection to %s failed, trying again in %s second(s)"\
+          % (host_port, AUTOSCALING_RETRY_INTERVAL_SECONDS))
       time.sleep(AUTOSCALING_RETRY_INTERVAL_SECONDS)
     except Exception as e:
       log_fn("Unexpected error %s (%s)" % (e, type(e)))
@@ -118,7 +121,7 @@ class AutoscalingClient:
     if len(self.hosts) != len(self._servers):
       raise ValueError("Number of hosts is different from number of server proxies!\n" +
         "Hosts: %s\nServer proxies: %s" % (self.hosts, self._servers.keys()))
-    return list(self._servers.values())
+    return [self._servers[k] for k in sorted(self._servers.keys())]
 
   def add_worker(self, host_port):
     '''

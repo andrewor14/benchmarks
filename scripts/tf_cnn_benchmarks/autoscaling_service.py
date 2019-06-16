@@ -39,8 +39,8 @@ class AutoscalingService:
   def get_params(self):
     return str(self.benchmark_cnn.params)
 
-  def get_epoch(self):
-    return self.benchmark_cnn.autoscaling_epoch
+  def get_status(self):
+    return self.benchmark_cnn.autoscaling_status.value
 
   def get_cluster_spec(self):
     return cnn_util.make_cluster_spec(self.benchmark_cnn.params)
@@ -54,7 +54,7 @@ class AutoscalingService:
     '''
     log_fn("Received join cluster request from %s" % host_port)
     cluster_spec = self.get_cluster_spec()
-    ps_hosts = cluster_spec["ps"] if "ps" in cluster_spec else []
+    hosts = cluster_spec["ps"] if "ps" in cluster_spec else []
     worker_hosts = cluster_spec["worker"]
     hosts = ps_hosts + worker_hosts
     is_new_worker = host_port not in hosts
@@ -64,14 +64,30 @@ class AutoscalingService:
         log_fn("... autoscaling client is not ready yet, waiting %s second(s)" %\
           AUTOSCALING_RETRY_INTERVAL_SECONDS)
         time.sleep(AUTOSCALING_RETRY_INTERVAL_SECONDS)
-      # Calling autoscaling_client.add_worker directly will hang because this server
+      # Tell everyone to add this worker.
+      # Note: Calling autoscaling_client.add_worker directly will hang because this server
       # is single threaded and so cannot process the add_workers request asynchronously.
-      # Thus, we should avoid sending the request to ourselves (the master server).
+      # Thus, we need to treat the master server (ourselves) separately.
       client = self.benchmark_cnn.autoscaling_client
       for server in client.servers:
         if server != client.master_server:
           server.add_workers([host_port])
       self.add_workers([host_port])
+      # Note: There may be pending workers that are not part of the autoscaling client yet.
+      # Here we manually tell them to add this new worker. In the future there may be a
+      # cleaner way to do this.
+      try:
+        self.benchmark_cnn.pending_cluster_spec_lock.acquire()
+        if self.benchmark_cnn.pending_cluster_spec is not None:
+          from autoscaling_client import convert_port, connect
+          pending_workers = self.benchmark_cnn.pending_cluster_spec["worker"]
+          pending_workers = list(set(pending_workers) - set(self.get_cluster_spec()["worker"]))
+          for pending_worker in pending_workers:
+            log_fn("Telling pending worker %s to add worker %s" % (pending_worker, host_port))
+            server = connect(convert_port(pending_worker))
+            server.add_workers([host_port])
+      finally:
+        self.benchmark_cnn.pending_cluster_spec_lock.release()
     return is_new_worker
 
   def _get_or_create_pending_cluster_spec(self):
@@ -84,25 +100,21 @@ class AutoscalingService:
     return self.benchmark_cnn.pending_cluster_spec
 
   def add_workers(self, host_ports):
-    log_fn("Adding these workers %s" % host_ports)
+    log_fn("Handling add_worker: request: %s" % host_ports)
     try:
       self.benchmark_cnn.pending_cluster_spec_lock.acquire()
       cluster_spec = self._get_or_create_pending_cluster_spec()
       cluster_spec["worker"].extend(host_ports)
-      self.benchmark_cnn.should_restart = True
     finally:
       self.benchmark_cnn.pending_cluster_spec_lock.release()
 
   def remove_workers(self, host_ports):
-    log_fn("Removing these workers %s" % host_ports)
+    log_fn("Handling remove_workers request: %s" % host_ports)
     try:
       self.benchmark_cnn.pending_cluster_spec_lock.acquire()
       cluster_spec = self._get_or_create_pending_cluster_spec()
       for hp in host_ports:
         cluster_spec["worker"].remove(hp)
-        if hp == self.benchmark_cnn.params.host_port:
-          self.benchmark_cnn.should_terminate = True
-      self.benchmark_cnn.should_restart = True
     finally:
       self.benchmark_cnn.pending_cluster_spec_lock.release()
 

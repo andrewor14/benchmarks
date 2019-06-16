@@ -1453,17 +1453,10 @@ class BenchmarkCNN(object):
     self.global_batch_size = None
     self.autoscaling_client = None
 
-    # Whether we should restart after the next step
-    # Accesses must be guarded by `self._should_restart_lock`
-    self._should_restart = False
-    self._should_restart_lock = threading.Lock()
-
-    # Whether we should terminate after the next step
-    self.should_terminate = False
-
-    # Epoch number to keep track of cluster membership changes
-    # This does not need a lock because it's only modified in one thread
-    self.autoscaling_epoch = 0
+    # Status to synchronize cluster membership changes
+    # Accesses must be guarded by `self._autoscaling_status_lock`
+    self._autoscaling_status = AutoscalingStatus.READY_TO_SYNC
+    self._autoscaling_status_lock = threading.Lock()
 
     # The cluster spec to apply next time we reinitialize
     # Note: We can't apply the new cluster spec right away because doing so will
@@ -1485,6 +1478,8 @@ class BenchmarkCNN(object):
       # Request to join the cluster
       self.autoscaling_client.master_server.join_cluster(self.params.host_port)
       self.initialize()
+      # TODO: temporary
+      self.num_warmup_batches = 0
       log_fn("Done initializing:\n\n%s\n\n" % str(self.params))
     except Exception as e:
       import traceback
@@ -1494,33 +1489,36 @@ class BenchmarkCNN(object):
 
   def reinitialize(self):
     log_fn("[Autoscaling] reinitializing...")
-    self.should_restart = False
     tf.reset_default_graph()
     self.initialize()
     self.num_warmup_batches = 0
     log_fn("[Autoscaling] reinitialized")
 
   @property
-  def should_restart(self):
+  def autoscaling_status(self):
     '''
-    Atomic getter for `self._should_restart`, guarded by `self._should_restart_lock`.
+    Atomic getter for `self._autoscaling_status`, guarded by `self._autoscaling_status_lock`.
     '''
     try:
-      self._should_restart_lock.acquire()
-      return self._should_restart
+      self._autoscaling_status_lock.acquire()
+      return self._autoscaling_status
     finally:
-      self._should_restart_lock.release()
+      self._autoscaling_status_lock.release()
 
-  @should_restart.setter
-  def should_restart(self, should_restart):
+  @autoscaling_status.setter
+  def autoscaling_status(self, status):
     '''
-    Atomic setter for `self._should_restart`, guarded by `self._should_restart_lock`.
+    Atomic setter for `self._autoscaling_status`, guarded by `self._autoscaling_status_lock`.
     '''
     try:
-      self._should_restart_lock.acquire()
-      self._should_restart = should_restart
+      self._autoscaling_status_lock.acquire()
+      if not isinstance(status, AutoscalingStatus):
+        raise ValueError("'%s' is not an AutoscalingStatus" % status)
+      if self._autoscaling_status != status:
+        log_fn("Changing autoscaling status from %s to %s" % (self._autoscaling_status, status))
+      self._autoscaling_status = status
     finally:
-      self._should_restart_lock.release()
+      self._autoscaling_status_lock.release()
 
   def save_variables(self, sess):
     '''Save the values of savable variables (including the global step) to memory.'''
@@ -1548,49 +1546,73 @@ class BenchmarkCNN(object):
         restore_ops.append(v.assign(self.saved_variables[v.name]))
     return restore_ops
 
+  def autoscaling_status_barrier(self, target, soft=False):
+    '''
+    Wait until everyone has reached the target autoscaling status or the one after it.
+
+    This requires the caller to already be in the target status.
+    If `soft` is True then this returns after the first attempt.
+    Return whether the target status barrier was reached by everyone.
+    '''
+    if self.autoscaling_status != target:
+      raise ValueError("Current autoscaling status %s must match barrier target %s" %\
+        (self.autoscaling_status, target))
+    log_fn("Waiting for everyone to reach %s" % target)
+    target_next = AutoscalingStatus((target.value % len(AutoscalingStatus)) + 1)
+    while True:
+      statuses = [AutoscalingStatus(server.get_status()) for server in self.autoscaling_client.servers]
+      statuses_str = [str(status).split(".")[-1] for status in statuses]
+      if all([status == target or status == target_next for status in statuses]):
+        log_fn("... barrier reached! %s" % statuses_str)
+        return True
+      log_fn("... barrier not reached: %s" % statuses_str)
+      if soft:
+        return False
+      time.sleep(AUTOSCALING_RETRY_INTERVAL_SECONDS)
+
   def sync_cluster_spec(self):
     '''
     Retry until all the following are true
-      (1) Everyone's epoch is greater than or equal to mine
-      (2) Our cluster spec contains our host name
-      (3) We have the same cluster spec as everyone else
+      (1) Our cluster spec contains our host name
+      (2) We have the same cluster spec as everyone else
+      (3) Everyone's status is SYNCED or RUNNING
+
+    Our status must be READY_TO_SYNC before we call this method, and RUNNING when we return.
     '''
     log_fn("Attempting to sync cluster spec with everyone")
-    self.autoscaling_epoch += 1
+    self.autoscaling_status_barrier(AutoscalingStatus.READY_TO_SYNC)
+    self.autoscaling_status = AutoscalingStatus.SYNCING
+    self.autoscaling_status_barrier(AutoscalingStatus.SYNCING)
+
     client = self.autoscaling_client
     while True:
       failure_message = None
       my_cluster_spec = json.dumps(client.cluster_spec)
 
-      # (1) Is everyone on an epoch greater than or equal to mine?
-      epochs = [server.get_epoch() for server in client.servers]
-      max_epoch = max(epochs)
-      if max_epoch > self.autoscaling_epoch:
-        self.autoscaling_epoch = max_epoch
-      if not all([e >= self.autoscaling_epoch for e in epochs]):
-        failure_message = "... not everyone has reached my epoch (%s) yet: %s" % (self.autoscaling_epoch, epochs)
-
-      # (2) Does our cluster spec contain our host name?
-      if not failure_message and self.params.host_port not in client.hosts:
+      # (1) Does our cluster spec contain our host name?
+      if self.params.host_port not in client.hosts:
         failure_message = "... cluster spec does not contain this host (%s)" % self.params.host_port
 
-      # (3) Do we have the same cluster spec as everyone else?
+     # (2) Do we have the same cluster spec as everyone else?
       if not failure_message:
         for server in client.servers:
           their_cluster_spec = json.dumps(server.get_cluster_spec())
           if my_cluster_spec != their_cluster_spec:
             failure_message = "... cluster spec sync failed"
 
-      # If no failure, we pass
+      # If no failure so far, then we are synced, so we should transition to SYNCED
       if not failure_message:
-        log_fn("cluster spec synced: %s" % my_cluster_spec)
+        log_fn("... cluster spec synced: %s" % my_cluster_spec)
+        self.autoscaling_status = AutoscalingStatus.SYNCED
+        self.autoscaling_status_barrier(AutoscalingStatus.SYNCED)
+        self.autoscaling_status = AutoscalingStatus.RUNNING
         return
-      else:
-        # On failure, reset client with cluster spec from the master autoscaling server
-        log_fn("%s, trying again in %s second(s)" % (failure_message, AUTOSCALING_RETRY_INTERVAL_SECONDS))
-        time.sleep(AUTOSCALING_RETRY_INTERVAL_SECONDS)
-        client.reset()
-        self.apply_cluster_spec(client.cluster_spec)
+
+      # On failure, reset client with cluster spec from the master autoscaling server
+      log_fn("%s, trying again in %s second(s)" % (failure_message, AUTOSCALING_RETRY_INTERVAL_SECONDS))
+      time.sleep(AUTOSCALING_RETRY_INTERVAL_SECONDS)
+      client.reset()
+      self.apply_cluster_spec(client.cluster_spec)
 
   def apply_cluster_spec(self, cluster_spec):
     '''
@@ -1879,10 +1901,6 @@ class BenchmarkCNN(object):
               self.num_workers, [tf.bool], shapes=[[]],
               shared_name='terminating_queue_%s' % device))
 
-    # If cluster membership changed during initialization, we need to restart
-    if self.should_restart:
-      self.reinitialize()
-
   @contextlib.contextmanager
   def _do_eval(self):
     """Context manager to switches BenchmarkCNN to eval mode.
@@ -2038,6 +2056,18 @@ class BenchmarkCNN(object):
           self.model.get_model_name(), benchmark_info['dataset_name'],
           run_param, test_id=self.params.benchmark_test_id)
 
+  def watch_pending_cluster_spec(self):
+    '''
+    Wait for `self.pending_cluster_spec` to be set, then change status to READY_TO_SYNC
+    once everyone is RUNNING or already READY_TO_SYNC.
+    This is only called on the parameter server.
+    '''
+    log_fn("Parameter server waiting for pending cluster spec to be set...")
+    while self.pending_cluster_spec is None:
+      time.sleep(AUTOSCALING_RETRY_INTERVAL_SECONDS)
+    self.autoscaling_status_barrier(AutoscalingStatus.RUNNING)
+    self.autoscaling_status = AutoscalingStatus.READY_TO_SYNC
+
   def run(self):
     """Run the benchmark task assigned to this process.
 
@@ -2049,9 +2079,8 @@ class BenchmarkCNN(object):
     if self.params.job_name == 'ps':
       while True:
         log_fn('Running parameter server %s' % self.task_index)
-        self.cluster_manager.join_server(self.terminating_queues, self.graph)
-        if not self.should_restart:
-          return {}
+        self.cluster_manager.join_server(self.terminating_queues, self.graph, self.watch_pending_cluster_spec)
+        # TODO: parameter server should terminate at some point?
         self.reinitialize()
 
     # For distributed_all_reduce with multiple workers, drive
@@ -2072,7 +2101,7 @@ class BenchmarkCNN(object):
     else:
       while True:
         train_stats = self._benchmark_train()
-        if self.should_terminate or not self.should_restart:
+        if self.saved_variables is None:
           return train_stats
         self.reinitialize()
 
@@ -2618,16 +2647,36 @@ class BenchmarkCNN(object):
         # reset times to ignore warm up batch
         step_train_times = []
         loop_start_time = time.time()
-      # If we received signal to restart, save our variables and return
-      # TODO: saver is not accurate anymore
-      if self.should_restart or self.should_terminate:
-        if self.should_terminate:
-          log_fn("[Autoscaling] Received signal to terminate")
-        else:
-          log_fn("[Autoscaling] Received signal to restart server")
-          self.save_variables(sess)
-        sess.run(graph_info.terminate_op)
-        return None
+
+      # If there is a pending cluster spec, then it means there is a change in cluster membership
+      try:
+        if self.pending_cluster_spec is not None:
+          if self.autoscaling_status != AutoscalingStatus.READY_TO_SYNC:
+            self.autoscaling_status_barrier(AutoscalingStatus.RUNNING)
+            self.autoscaling_status = AutoscalingStatus.READY_TO_SYNC
+          # Note: we have to wait until everyone is READY_TO_SYNC here before we can restart.
+          # However, we can't just block here because other processes may rely on us to make
+          # progress and get to this point. Therefore, here we can only restart if everyone
+          # is READY_TO_SYNC.
+          should_restart = self.autoscaling_status_barrier(AutoscalingStatus.READY_TO_SYNC, soft=True)
+          if should_restart:
+            # If we're not in the new cluster spec, then that means we were removed
+            # Otherwise, we should save our variables and restart
+            if self.params.host_port not in self.pending_cluster_spec["worker"]:
+              log_fn("[Autoscaling] Received signal to terminate")
+            else:
+              log_fn("[Autoscaling] Received signal to restart server")
+              self.save_variables(sess)
+            sess.run(graph_info.terminate_op)
+            return None
+          else:
+            log_fn("Not restarting because not everyone is READY_TO_SYNC yet")
+      except Exception as e:
+        import traceback
+        log_fn("ERROR: %s (%s)" % (e, type(e)))
+        traceback.print_exc()
+        raise e
+
       if (summary_writer and
           (local_step + 1) % self.params.save_summaries_steps == 0):
         fetch_summary = graph_info.summary_op
