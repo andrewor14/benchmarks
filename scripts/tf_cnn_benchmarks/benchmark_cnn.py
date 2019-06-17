@@ -2342,8 +2342,7 @@ class BenchmarkCNN(object):
     fetches_list = nest.flatten(list(fetches.values()))
     main_fetch_group = tf.group(*fetches_list, name='main_fetch_group')
     execution_barrier = None
-    if (not self.single_session and self.job_name and
-        not self.params.cross_replica_sync):
+    if not self.single_session and self.job_name:
       execution_barrier = self.add_sync_queues_and_barrier(
           'execution_barrier_', [])
 
@@ -2558,6 +2557,46 @@ class BenchmarkCNN(object):
       generate_tfprof_profile(profiler, self.params.tfprof_file)
     return stats
 
+  def maybe_restart(self, sess, graph_info):
+    '''
+    Check whether we should restart this server, called immediately before we run fetches.
+
+    This method includes a potential transition from RUNNING to READY_TO_SYNC followed by
+    a synchronization barrier to ensure that everyone sees everyone else's status change.
+    After that, if everyone is READY_TO_SYNC, then we will go ahead and restart.
+
+    Return whether this process should restart.
+    '''
+    should_restart = False
+
+    # If there is a change in cluster membership and we haven't already transitioned to
+    # READY_TO_SYNC yet, then go ahead and transition
+    if self.pending_cluster_spec is not None and\
+         self.autoscaling_status != AutoscalingStatus.READY_TO_SYNC:
+       self.autoscaling_status_barrier(AutoscalingStatus.RUNNING)
+       self.autoscaling_status = AutoscalingStatus.READY_TO_SYNC
+
+    # Make sure everyone has had the chance to transition to READY_TO_SYNC
+    sess.run(graph_info.execution_barrier)
+
+    # If everyone is READY_TO_SYNC, then go ahead and restart
+    # Note: we can't just block here because other processes may rely on us to make progress
+    # Therefore, we need to keep running the benchmark until everyone is READY_TO_SYNC
+    if self.autoscaling_status == AutoscalingStatus.READY_TO_SYNC:
+      should_restart = self.autoscaling_status_barrier(AutoscalingStatus.READY_TO_SYNC, soft=True)
+      if should_restart:
+        # If we're not in the new cluster spec, then that means we were removed
+        # Otherwise, we should save our variables and restart
+        if self.params.host_port not in self.pending_cluster_spec["worker"]:
+          log_fn("[Autoscaling] Received signal to terminate")
+        else:
+          log_fn("[Autoscaling] Received signal to restart server")
+          self.save_variables(sess)
+        sess.run(graph_info.terminate_op)
+      else:
+        log_fn("[Autoscaling] Not restarting because not everyone is READY_TO_SYNC yet")
+    return should_restart
+
   def benchmark_with_session(self, sess, supervisor, graph_info,
                              eval_graph_info, bcast_global_variables_op,
                              is_chief, summary_writer, profiler):
@@ -2679,6 +2718,9 @@ class BenchmarkCNN(object):
       collective_graph_key = 7 if (
           self.params.variable_update == 'collective_all_reduce') else 0
 
+      if self.maybe_restart(sess, graph_info):
+        return None
+
       (summary_str, last_average_loss) = benchmark_one_step(
           sess, graph_info.fetches, local_step,
           self.batch_size * (self.num_workers
@@ -2687,33 +2729,6 @@ class BenchmarkCNN(object):
           profiler, image_producer, self.params, fetch_summary,
           benchmark_logger=self.benchmark_logger,
           collective_graph_key=collective_graph_key)
-
-      # If there is a pending cluster spec, then it means there is a change in cluster membership.
-      # We should try to transition to READY_TO_SYNC, and then wait for everyone is READY_TO_SYNC
-      # before restarting.
-
-      # Note: we must do this *after* running at least one benchmark step, because other processes
-      # may be blocked on the `sess.run(fetches)` call in the first step while waiting for us.
-      # Otherwise we may end up restarting ourselves without unblocking them.
-      if self.pending_cluster_spec is not None:
-        if self.autoscaling_status != AutoscalingStatus.READY_TO_SYNC:
-          self.autoscaling_status_barrier(AutoscalingStatus.RUNNING)
-          self.autoscaling_status = AutoscalingStatus.READY_TO_SYNC
-        # Note: we can't just block here because other processes may rely on us to make progress.
-        # Therefore, we need to keep running the benchmark until everyone is READY_TO_SYNC.
-        should_restart = self.autoscaling_status_barrier(AutoscalingStatus.READY_TO_SYNC, soft=True)
-        if should_restart:
-          # If we're not in the new cluster spec, then that means we were removed
-          # Otherwise, we should save our variables and restart
-          if self.params.host_port not in self.pending_cluster_spec["worker"]:
-            log_fn("[Autoscaling] Received signal to terminate")
-          else:
-            log_fn("[Autoscaling] Received signal to restart server")
-            self.save_variables(sess)
-          sess.run(graph_info.terminate_op)
-          return None
-        else:
-          log_fn("[Autoscaling] Not restarting because not everyone is READY_TO_SYNC yet")
 
       if summary_str is not None and is_chief:
         supervisor.summary_computed(sess, summary_str)

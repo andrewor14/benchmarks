@@ -82,6 +82,8 @@ class AutoscalingService:
           from autoscaling_client import convert_port, connect
           pending_workers = self.benchmark_cnn.pending_cluster_spec["worker"]
           pending_workers = list(set(pending_workers) - set(self.get_cluster_spec()["worker"]))
+          if host_port in pending_workers:
+            pending_workers.remove(host_port)
           for pending_worker in pending_workers:
             log_fn("Telling pending worker %s to add worker %s" % (pending_worker, host_port))
             server = connect(convert_port(pending_worker))
