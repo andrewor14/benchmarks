@@ -2069,6 +2069,21 @@ class BenchmarkCNN(object):
     self.autoscaling_status_barrier(AutoscalingStatus.RUNNING)
     self.autoscaling_status = AutoscalingStatus.READY_TO_SYNC
 
+  def launch_worker_every_n_seconds(self):
+    '''
+    Launch a worker process every N seconds up to a maximum.
+    '''
+    max_workers = os.getenv(AUTOSCALING_MAX_WORKERS) or -1
+    max_workers = int(max_workers)
+    every_n_seconds = os.getenv(AUTOSCALING_LAUNCH_WORKER_EVERY_N_SECONDS) or -1
+    every_n_seconds = int(every_n_seconds)
+    if every_n_seconds > 0:
+      log_fn("[Autoscaling] Launching a worker every %s seconds" % every_n_seconds)
+      while max_workers > 0 and self.num_workers < max_workers:
+        time.sleep(every_n_seconds)
+        log_fn("[Autoscaling] There are now %s worker(s). Launching one more..." % self.num_workers)
+        self.autoscaling_client.launch_worker()
+
   def run(self):
     """Run the benchmark task assigned to this process.
 
@@ -2635,6 +2650,11 @@ class BenchmarkCNN(object):
     while not done_fn():
       if local_step == 0:
         log_fn('Done warm up')
+
+        # Start thread that launches a worker process every N seconds
+        if self.task_index == 0 and os.getenv(AUTOSCALING_LAUNCH_WORKER_EVERY_N_SECONDS) is not None:
+          threading.Thread(target=self.launch_worker_every_n_seconds).start()
+
         if graph_info.execution_barrier:
           log_fn('Waiting for other replicas to finish warm up')
           sess.run([graph_info.execution_barrier])
