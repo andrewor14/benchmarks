@@ -47,6 +47,7 @@ import variable_mgr
 import variable_mgr_util
 from autoscaling_client import convert_port, AutoscalingClient
 from autoscaling_service import listen_for_autoscaling_requests
+from autoscaling_auto_launch import launch_worker_every_n_seconds
 from autoscaling_params import *
 from cnn_util import log_fn
 from models import model_config
@@ -1480,7 +1481,6 @@ class BenchmarkCNN(object):
       self.initialize()
       # TODO: temporary
       self.num_warmup_batches = 0
-      log_fn("Done initializing:\n\n%s\n\n" % str(self.params))
     except Exception as e:
       import traceback
       log_fn("Error during initialization: %s (%s)" % (e, e.__class__.__name__))
@@ -1902,6 +1902,8 @@ class BenchmarkCNN(object):
               self.num_workers, [tf.bool], shapes=[[]],
               shared_name='terminating_queue_%s' % device))
 
+    log_fn("Done initializing:\n\n%s\n\n" % str(self.params))
+
   @contextlib.contextmanager
   def _do_eval(self):
     """Context manager to switches BenchmarkCNN to eval mode.
@@ -2068,21 +2070,6 @@ class BenchmarkCNN(object):
       time.sleep(AUTOSCALING_RETRY_INTERVAL_SECONDS)
     self.autoscaling_status_barrier(AutoscalingStatus.RUNNING)
     self.autoscaling_status = AutoscalingStatus.READY_TO_SYNC
-
-  def launch_worker_every_n_seconds(self):
-    '''
-    Launch a worker process every N seconds up to a maximum.
-    '''
-    max_workers = os.getenv(AUTOSCALING_MAX_WORKERS) or -1
-    max_workers = int(max_workers)
-    every_n_seconds = os.getenv(AUTOSCALING_LAUNCH_WORKER_EVERY_N_SECONDS) or -1
-    every_n_seconds = int(every_n_seconds)
-    if every_n_seconds > 0:
-      log_fn("[Autoscaling] Launching a worker every %s seconds" % every_n_seconds)
-      while max_workers > 0 and self.num_workers < max_workers:
-        time.sleep(every_n_seconds)
-        log_fn("[Autoscaling] There are now %s worker(s). Launching one more..." % self.num_workers)
-        self.autoscaling_client.launch_worker()
 
   def run(self):
     """Run the benchmark task assigned to this process.
@@ -2692,7 +2679,7 @@ class BenchmarkCNN(object):
 
         # Start thread that launches a worker process every N seconds
         if self.task_index == 0 and os.getenv(AUTOSCALING_LAUNCH_WORKER_EVERY_N_SECONDS) is not None:
-          threading.Thread(target=self.launch_worker_every_n_seconds).start()
+          threading.Thread(target=launch_worker_every_n_seconds, args=[self.autoscaling_client]).start()
 
         if graph_info.execution_barrier:
           log_fn('Waiting for other replicas to finish warm up')
