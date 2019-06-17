@@ -23,6 +23,17 @@ def launch_worker_every_n_seconds(client):
     log_fn("[Autoscaling] Launching a worker every %s seconds" % every_n_seconds)
     num_workers = len(client.master_server.get_cluster_spec()["worker"])
     while max_workers > 0 and num_workers < max_workers:
+      log_fn("[Autoscaling] Waiting until the master worker starts RUNNING...")
+      # Start the timer every time the master worker starts running
+      previous_status = None
+      new_status = None
+      while True:
+        previous_status = new_status
+        new_status = AutoscalingStatus(client.master_server.get_status())
+        if previous_status == AutoscalingStatus.SETTING_UP and new_status == AutoscalingStatus.RUNNING:
+          break
+        time.sleep(AUTOSCALING_RETRY_INTERVAL_SECONDS)
+      log_fn("[Autoscaling] Master worker is now RUNNING, starting timer to launch new worker")
       time.sleep(every_n_seconds)
       log_fn("[Autoscaling] There are now %s worker(s). Launching one more..." % num_workers)
       client.launch_worker()

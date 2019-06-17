@@ -6,16 +6,17 @@ from enum import Enum
 # Statuses for syncing restart across replicas, state machine:
 # State machine looks like the following:
 #
-#   READY_TO_SYNC --> SYNCING --> SYNCED --> RUNNING
-#        ^                                      |
-#        |                                      |
-#        '--------------------------------------'
+#   READY_TO_SYNC --> SYNCING --> SYNCED --> SETTING_UP --> RUNNING
+#        ^                                                     |
+#        |                                                     |
+#        '-----------------------------------------------------'
 #
 class AutoscalingStatus(Enum):
   READY_TO_SYNC = 1
   SYNCING = 2
   SYNCED = 3
-  RUNNING = 4
+  SETTING_UP = 4
+  RUNNING = 5
 
 # Client and server
 AUTOSCALING_MASTER_HOST_PORT = "AUTOSCALING_MASTER_HOST_PORT"

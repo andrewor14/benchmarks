@@ -1575,9 +1575,9 @@ class BenchmarkCNN(object):
     Retry until all the following are true
       (1) Our cluster spec contains our host name
       (2) We have the same cluster spec as everyone else
-      (3) Everyone's status is SYNCED or RUNNING
+      (3) Everyone's status is SYNCED or SETTING_UP
 
-    Our status must be READY_TO_SYNC before we call this method, and RUNNING when we return.
+    Our status must be READY_TO_SYNC before we call this method, and SETTING_UP when we return.
     '''
     log_fn("[Autoscaling] Attempting to sync cluster spec with everyone")
     self.autoscaling_status_barrier(AutoscalingStatus.READY_TO_SYNC)
@@ -1605,7 +1605,7 @@ class BenchmarkCNN(object):
         log_fn("[Autoscaling] ... cluster spec synced: %s" % my_cluster_spec)
         self.autoscaling_status = AutoscalingStatus.SYNCED
         self.autoscaling_status_barrier(AutoscalingStatus.SYNCED)
-        self.autoscaling_status = AutoscalingStatus.RUNNING
+        self.autoscaling_status = AutoscalingStatus.SETTING_UP
         return
 
       # On failure, reset client with cluster spec from the master autoscaling server
@@ -2081,6 +2081,8 @@ class BenchmarkCNN(object):
     """
     if self.params.job_name == 'ps':
       while True:
+        self.autoscaling_status_barrier(AutoscalingStatus.SETTING_UP)
+        self.autoscaling_status = AutoscalingStatus.RUNNING
         log_fn('Running parameter server %s' % self.task_index)
         self.cluster_manager.join_server(self.terminating_queues, self.graph,\
           self.watch_pending_cluster_spec)
@@ -2673,6 +2675,11 @@ class BenchmarkCNN(object):
     skip_final_eval = False
     loop_start_time = time.time()
     last_average_loss = None
+
+    # Wait until everyone is done setting up before we start running fetches
+    self.autoscaling_status_barrier(AutoscalingStatus.SETTING_UP)
+    self.autoscaling_status = AutoscalingStatus.RUNNING
+
     while not done_fn():
       if local_step == 0:
         log_fn('Done warm up')
