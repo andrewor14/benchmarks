@@ -276,31 +276,6 @@ class GrpcClusterManager(BaseClusterManager):
   def get_target(self):
     return self._target
 
-  def join_server(self, terminating_queues=None, graph=None, run_in_background=None):
-    """
-    Wait for the server to terminate.
+  def join_server(self):
+    self._server.join()
 
-    If a terminating queue is provided, then dequeue N = num_workers from the queue.
-    Since each worker enqueues a token in each queue after they finish, this allows
-    the parameter server to terminate once all workers are done.
-
-    For parameter_server mode, this should only be called on the parameter servers.
-    """
-    if terminating_queues is not None:
-      queue = None
-      if len(terminating_queues) == self.num_ps():
-        queue = terminating_queues[self._task_index]
-      elif len(terminating_queues) == 1:
-        queue = terminating_queues[0]
-      else:
-        raise ValueError("Number of terminating queues (%s) should be either %s or 1. " % \
-                         (len(terminating_queues), self.num_ps()))
-      with tf.Session(target=self._target, graph=graph, config=self._config_proto) as sess:
-        log_fn("Server %s waiting to dequeue tokens!" % self._task_index)
-        if run_in_background is not None:
-          threading.Thread(target=run_in_background).start()
-        for i in range(self.num_workers()):
-          sess.run(queue.dequeue())
-          log_fn("Server %s dequeued %s/%s tokens!" % (self._task_index, i+1, self.num_workers()))
-    else:
-      self._server.join()

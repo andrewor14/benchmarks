@@ -89,9 +89,7 @@ GraphInfo = namedtuple(  # pylint: disable=invalid-name
         # Group of ops that perform per-device initialization work
         'local_var_init_op_group',
         # Op to produce summaries
-        'summary_op',
-        # Op to signal to parameter servers that a worker is done
-        'terminate_op'
+        'summary_op'
     ])
 
 # Add default values to GraphInfo to extend it more easily
@@ -1893,18 +1891,6 @@ class BenchmarkCNN(object):
 
     self.graph = tf.Graph()
 
-    # Build queues for terminating parameter servers
-    # At the end, each parameter server tries to dequeue N = num_workers tokens from its queue.
-    # After each worker is done, it will enqueue 1 token to each server's terminating queue.
-    self.terminating_queues = []
-    with self.graph.as_default():
-      if self.params.variable_update == 'parameter_server':
-        for device in self.sync_queue_devices:
-          with tf.device(device):
-            self.terminating_queues.append(tf.FIFOQueue(
-              self.num_workers, [tf.bool], shapes=[[]],
-              shared_name='terminating_queue_%s' % device))
-
     log_fn("Done initializing:\n\n%s\n\n" % str(self.params))
 
   @contextlib.contextmanager
@@ -2381,9 +2367,6 @@ class BenchmarkCNN(object):
                                        name='local_var_init_op_group')
     summary_op = tf.summary.merge_all()
 
-    terminate_op = tf.group(*[q.enqueue(tf.constant(True)) for q in self.terminating_queues],
-                            name='terminate_op_group')
-
     return GraphInfo(
         input_producer_op=input_producer_op,
         enqueue_ops=enqueue_ops,
@@ -2391,8 +2374,7 @@ class BenchmarkCNN(object):
         execution_barrier=execution_barrier,
         global_step=global_step,
         local_var_init_op_group=local_var_init_op_group,
-        summary_op=summary_op,
-        terminate_op=terminate_op)
+        summary_op=summary_op)
 
   def _benchmark_graph(self, graph_info, eval_graph_info):
     """Benchmark the training graph.
@@ -2590,7 +2572,6 @@ class BenchmarkCNN(object):
         else:
           log_fn("[Autoscaling] Received signal to restart server")
           self.save_variables(sess)
-        sess.run(graph_info.terminate_op)
       else:
         log_fn("[Autoscaling] Not restarting because not everyone is READY_TO_SYNC yet")
     return should_restart
@@ -2831,9 +2812,6 @@ class BenchmarkCNN(object):
     if last_average_loss is not None:
       stats['last_average_loss'] = last_average_loss
 
-    # Signal to the parameter servers that this worker is done
-    sess.run(graph_info.terminate_op)
-
     return stats
 
   def _should_eval_during_training(self, step):
@@ -2966,8 +2944,7 @@ class BenchmarkCNN(object):
             graph_info.local_var_init_op_group),
         fetches=_get_tensors_or_ops(graph_info.fetches),
         global_step=updated_global_step,
-        summary_op=None,
-        terminate_op=_get_tensors_or_ops(graph_info.terminate_op))
+        summary_op=None)
     return (updated_graph, updated_graph_info)
 
   def _build_input_processing(self, shift_ratio=0):
