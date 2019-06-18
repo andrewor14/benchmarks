@@ -90,6 +90,7 @@ class AutoscalingService:
             server.add_workers([host_port])
       finally:
         self.benchmark_cnn.pending_cluster_spec_lock.release()
+    log_fn("Done handling join cluster request for %s" % host_port)
     return is_new_worker
 
   def _get_or_create_pending_cluster_spec(self):
@@ -109,6 +110,8 @@ class AutoscalingService:
       cluster_spec["worker"].extend(host_ports)
     finally:
       self.benchmark_cnn.pending_cluster_spec_lock.release()
+      log_fn("Done handling add_workers request for %s" % host_ports)
+
 
   def remove_workers(self, host_ports):
     log_fn("Handling remove_workers request: %s" % host_ports)

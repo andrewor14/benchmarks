@@ -29,6 +29,7 @@ export BATCH_SIZE=8192
 export SERVER_PROTOCOL="grpc"
 export DISPLAY_EVERY="1"
 export AUTOSCALING_DISABLE_CHECKPOINT_RESTORE="true"
+export DISABLE_INPUT_PREPROCESSING="true"
 
 # Run it
 ./slurm_run_benchmark.sh

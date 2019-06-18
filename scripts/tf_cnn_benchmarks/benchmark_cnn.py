@@ -847,11 +847,13 @@ def benchmark_one_step(sess,
     run_metadata = None
   summary_str = None
   start_time = time.time()
+  log_fn("Right before run fetches")
   if summary_op is None:
     results = sess.run(fetches, options=run_options, run_metadata=run_metadata)
   else:
     (results, summary_str) = sess.run(
         [fetches, summary_op], options=run_options, run_metadata=run_metadata)
+  log_fn("Right after run fetches")
 
   if not params.forward_only:
     lossval = results['average_loss']
@@ -1482,7 +1484,6 @@ class BenchmarkCNN(object):
       # TODO: temporary
       self.num_warmup_batches = 0
     except Exception as e:
-      import traceback
       log_fn("Error during initialization: %s (%s)" % (e, e.__class__.__name__))
       traceback.print_exc()
       raise e
@@ -1546,7 +1547,7 @@ class BenchmarkCNN(object):
         restore_ops.append(v.assign(self.saved_variables[v.name]))
     return restore_ops
 
-  def autoscaling_status_barrier(self, target, soft=False):
+  def autoscaling_status_barrier(self, target, soft=False, except_for_me=False):
     '''
     Wait until everyone has reached the target autoscaling status or the one after it.
 
@@ -1554,13 +1555,17 @@ class BenchmarkCNN(object):
     If `soft` is True then this returns after the first attempt.
     Return whether the target status barrier was reached by everyone.
     '''
-    if self.autoscaling_status != target:
+    if self.autoscaling_status != target and not except_for_me:
       raise ValueError("Current autoscaling status %s must match barrier target %s" %\
         (self.autoscaling_status, target))
-    log_fn("[Autoscaling] Waiting for everyone to reach %s" % target)
+    log_fn("[Autoscaling] Waiting for everyone %sto reach %s" % ("else " if except_for_me else "", target))
     target_next = AutoscalingStatus((target.value % len(AutoscalingStatus)) + 1)
     while True:
-      statuses = [AutoscalingStatus(server.get_status()) for server in self.autoscaling_client.servers]
+      # Force _servers to be populated
+      servers = self.autoscaling_client.servers
+      if except_for_me:
+        servers = [s for s in servers if s != self.autoscaling_client._servers[self.params.host_port]]
+      statuses = [AutoscalingStatus(server.get_status()) for server in servers]
       statuses_str = [str(status).split(".")[-1] for status in statuses]
       if all([status == target or status == target_next for status in statuses]):
         log_fn("[Autoscaling] ... barrier reached! %s" % statuses_str)
@@ -2070,6 +2075,9 @@ class BenchmarkCNN(object):
       time.sleep(AUTOSCALING_RETRY_INTERVAL_SECONDS)
     self.autoscaling_status_barrier(AutoscalingStatus.RUNNING)
     self.autoscaling_status = AutoscalingStatus.READY_TO_SYNC
+    self.autoscaling_status_barrier(AutoscalingStatus.READY_TO_SYNC)
+    # Wait for everyone else to be SYNCING first; we want to be the last one there
+    self.autoscaling_status_barrier(AutoscalingStatus.SYNCING, soft=False, except_for_me=True)
 
   def run(self):
     """Run the benchmark task assigned to this process.
@@ -2084,8 +2092,7 @@ class BenchmarkCNN(object):
         self.autoscaling_status_barrier(AutoscalingStatus.SETTING_UP)
         self.autoscaling_status = AutoscalingStatus.RUNNING
         log_fn('Running parameter server %s' % self.task_index)
-        self.cluster_manager.join_server(self.terminating_queues, self.graph,\
-          self.watch_pending_cluster_spec)
+        self.watch_pending_cluster_spec()
         # TODO: parameter server should terminate at some point?
         self.reinitialize()
 
@@ -2540,6 +2547,10 @@ class BenchmarkCNN(object):
             'Received OutOfRangeError. Wrapping in Runtime error to avoid '
             'Supervisor from suppressing the error. Original OutOfRangeError '
             'with traceback:\n' + traceback.format_exc())
+      except Exception as e:
+        log_fn("Error: %s (%s)" % (e, e.__class__.__name__))
+        traceback.print_exc()
+        raise e
 
     sv.stop()
     if profiler:
@@ -2566,7 +2577,9 @@ class BenchmarkCNN(object):
        self.autoscaling_status = AutoscalingStatus.READY_TO_SYNC
 
     # Make sure everyone has had the chance to transition to READY_TO_SYNC
+    #log_fn("Right before execution barrier in maybe_restart")
     sess.run(graph_info.execution_barrier)
+    #log_fn("Right after execution barrier in maybe_restart")
 
     # If everyone is READY_TO_SYNC, then go ahead and restart
     # Note: we can't just block here because other processes may rely on us to make progress
