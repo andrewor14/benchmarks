@@ -1486,9 +1486,14 @@ class BenchmarkCNN(object):
 
   def reinitialize(self):
     log_fn("[Autoscaling] reinitializing...")
-    tf.reset_default_graph()
-    self.initialize()
-    self.num_warmup_batches = 0
+    try:
+      tf.reset_default_graph()
+      self.initialize()
+      self.num_warmup_batches = 0
+    except Exception as e:
+      log_fn("Error during reinitialization: %s (%s)" % (e, e.__class__.__name__))
+      traceback.print_exc()
+      raise e
     log_fn("[Autoscaling] reinitialized")
 
   @property
@@ -2097,7 +2102,12 @@ class BenchmarkCNN(object):
         return self._run_eval()
     else:
       while True:
-        train_stats = self._benchmark_train()
+        try:
+          train_stats = self._benchmark_train()
+        except Exception as e:
+          log_fn("Error in _benchmark_train: %s (%s)" % (e, e.__class__.__name__))
+          traceback.print_exc()
+          raise e
         if self.saved_variables is None:
           return train_stats
         self.reinitialize()
