@@ -6,7 +6,7 @@ from enum import Enum
 # Statuses for syncing restart across replicas, state machine:
 # State machine looks like the following:
 #
-#   READY_TO_SYNC --> SYNCING --> SYNCED --> SETTING_UP --> RUNNING
+#   READY_TO_SYNC --> SYNCING --> SYNCED --> SETTING_UP --> RUNNING --> TERMINATED
 #        ^                                                     |
 #        |                                                     |
 #        '-----------------------------------------------------'
@@ -17,6 +17,15 @@ class AutoscalingStatus(Enum):
   SYNCED = 3
   SETTING_UP = 4
   RUNNING = 5
+  TERMINATED = 6
+
+def get_next_autoscaling_status(autoscaling_status):
+  '''
+  Return the next autoscaling status assuming this process has not terminated.
+  '''
+  if autoscaling_status == AutoscalingStatus.TERMINATED:
+    return autoscaling_status
+  return AutoscalingStatus(autoscaling_status.value % (len(AutoscalingStatus) - 1) + 1)
 
 # Client and server
 AUTOSCALING_MASTER_HOST_PORT = "AUTOSCALING_MASTER_HOST_PORT"

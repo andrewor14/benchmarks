@@ -1560,7 +1560,7 @@ class BenchmarkCNN(object):
       raise ValueError("Current autoscaling status %s must match barrier target %s" %\
         (self.autoscaling_status, target))
     log_fn("[Autoscaling] Waiting for everyone %sto reach %s" % ("else " if except_for_me else "", target))
-    target_next = AutoscalingStatus((target.value % len(AutoscalingStatus)) + 1)
+    target_next = get_next_autoscaling_status(target)
     while True:
       # Force _servers to be populated
       servers = self.autoscaling_client.servers
@@ -1568,7 +1568,9 @@ class BenchmarkCNN(object):
         servers = [s for s in servers if s != self.autoscaling_client._servers[self.params.host_port]]
       statuses = [AutoscalingStatus(server.get_status()) for server in servers]
       statuses_str = [str(status).split(".")[-1] for status in statuses]
-      if all([status == target or status == target_next for status in statuses]):
+      # Don't wait for terminated processes
+      if all([status == target or status == target_next or\
+          status == AutoscalingStatus.TERMINATED for status in statuses]):
         log_fn("[Autoscaling] ... barrier reached! %s" % statuses_str)
         return True
       log_fn("[Autoscaling] ... barrier not reached: %s" % statuses_str)
@@ -2579,6 +2581,7 @@ class BenchmarkCNN(object):
         # Otherwise, we should save our variables and restart
         if self.params.host_port not in self.pending_cluster_spec["worker"]:
           log_fn("[Autoscaling] Received signal to terminate")
+          self.autoscaling_status = AutoscalingStatus.TERMINATED
         else:
           log_fn("[Autoscaling] Received signal to restart server")
           self.save_variables(sess)
