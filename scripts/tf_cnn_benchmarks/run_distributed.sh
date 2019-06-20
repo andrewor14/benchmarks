@@ -26,10 +26,11 @@ export MODEL="resnet56"
 export OPTIMIZER="momentum"
 export CROSS_REPLICA_SYNC="true"
 export BATCH_SIZE=8192
+export NUM_EPOCHS=10000
 export SERVER_PROTOCOL="grpc"
 export DISPLAY_EVERY="1"
 export AUTOSCALING_DISABLE_CHECKPOINT_RESTORE="true"
-export DISABLE_INPUT_PREPROCESSING="true"
+#export DISABLE_INPUT_PREPROCESSING="true"
 
 # Run it
 ./slurm_run_benchmark.sh

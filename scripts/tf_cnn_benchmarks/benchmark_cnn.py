@@ -1477,8 +1477,6 @@ class BenchmarkCNN(object):
       # Request to join the cluster
       self.autoscaling_client.master_server.join_cluster(self.params.host_port)
       self.initialize()
-      # TODO: temporary
-      self.num_warmup_batches = 0
     except Exception as e:
       log_fn("Error during initialization: %s (%s)" % (e, e.__class__.__name__))
       traceback.print_exc()
@@ -2679,10 +2677,6 @@ class BenchmarkCNN(object):
     loop_start_time = time.time()
     last_average_loss = None
 
-    # Wait until everyone is done setting up before we start running fetches
-    self.autoscaling_status_barrier(AutoscalingStatus.SETTING_UP)
-    self.autoscaling_status = AutoscalingStatus.RUNNING
-
     while not done_fn():
       if local_step == 0:
         log_fn('Done warm up')
@@ -2703,6 +2697,11 @@ class BenchmarkCNN(object):
           header_str += '\ttop_1_accuracy\ttop_5_accuracy'
         log_fn(header_str)
         assert len(step_train_times) == self.num_warmup_batches
+
+        # Wait until everyone is done setting up before we start running
+        self.autoscaling_status_barrier(AutoscalingStatus.SETTING_UP)
+        self.autoscaling_status = AutoscalingStatus.RUNNING
+
         # reset times to ignore warm up batch
         step_train_times = []
         loop_start_time = time.time()
