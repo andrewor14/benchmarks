@@ -43,6 +43,23 @@ def log_fn(log):
   print(log)
 
 
+def log_op(op, op_name, is_tensor):
+  # Log before running the op
+  print_before_op = tf.print("Before %s" % op_name)
+  with tf.control_dependencies([print_before_op]):
+    if is_tensor:
+      op = tf.identity(op)
+    else:
+      op = tf.group(op)
+  # Log after running the op
+  if is_tensor:
+    print_after_op = tf.Print(op, [], message = "After %s" % op_name)
+  else:
+    with tf.control_dependencies([op]):
+      print_after_op = tf.print("After %s" % op_name)
+  return print_after_op
+
+
 def roll_numpy_batches(array, batch_size, shift_ratio):
   """Moves a proportion of batches from start to the end of the array.
 

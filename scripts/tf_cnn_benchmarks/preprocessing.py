@@ -24,7 +24,7 @@ import math
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-import cnn_util
+from cnn_util import *
 from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import interleave_ops
 from tensorflow.contrib.data.python.ops import threadpool
@@ -859,16 +859,17 @@ class Cifar10ImagePreprocessor(BaseImagePreprocessor):
     # TODO(jsimsa): Implement datasets code path
     del shift_ratio, params
     with tf.name_scope('batch_processing'):
+      log_fn("Before dataset read data files")
       all_images, all_labels = dataset.read_data_files(subset)
-      all_images = tf.Print(all_images, [], message="dataset.read_data_files")
+      log_fn("After dataset read data files")
       all_images = tf.constant(all_images)
-      all_images = tf.Print(all_images, [], message="tf.constant")
+      all_images = log_op(all_images, "tf.constant", is_tensor=True)
       all_labels = tf.constant(all_labels)
       input_image, input_label = tf.train.slice_input_producer(
           [all_images, all_labels])
-      input_image = tf.Print(input_image, [], message="tf.train.slice_input_producer")
+      input_image = log_op(input_image, "tf.train.slice_input_producer", is_tensor=True)
       input_image = tf.cast(input_image, self.dtype)
-      input_image = tf.Print(input_image, [], message="tf.cast")
+      input_image = log_op(input_image, "tf.cast", is_tensor=True)
       input_label = tf.cast(input_label, tf.int32)
       # Ensure that the random shuffling has good mixing properties.
       min_fraction_of_examples_in_queue = 0.4
@@ -878,7 +879,7 @@ class Cifar10ImagePreprocessor(BaseImagePreprocessor):
           [input_image, input_label], batch_size=self.batch_size,
           capacity=min_queue_examples + 3 * self.batch_size,
           min_after_dequeue=min_queue_examples)
-      raw_images = tf.Print(raw_images, [], message="tf.train.shuffle_batch")
+      raw_images = log_op(raw_images, "tf.train.shuffle_batch", is_tensor=True)
 
       images = [[] for i in range(self.num_splits)]
       labels = [[] for i in range(self.num_splits)]
@@ -887,7 +888,7 @@ class Cifar10ImagePreprocessor(BaseImagePreprocessor):
       # batch. Without the unstack call, raw_images[i] would still access the
       # same image via a strided_slice op, but would be slower.
       raw_images = tf.unstack(raw_images, axis=0)
-      raw_images = tf.Print(raw_images, [], message="tf.unstack")
+      raw_images = log_op(raw_images, "tf.unstack", is_tensor=True)
       raw_labels = tf.unstack(raw_labels, axis=0)
       for i in xrange(self.batch_size):
         split_index = i % self.num_splits
@@ -897,19 +898,19 @@ class Cifar10ImagePreprocessor(BaseImagePreprocessor):
                                [dataset.depth, dataset.height, dataset.width])
         should_print = i <= 100 and i % 10 == 0
         if should_print:
-          raw_image = tf.Print(raw_image, [], message="tf.reshape (%s)" % i)
+          raw_image = log_op(raw_image, "tf.reshape (%s)" % i, is_tensor=True)
         raw_image = tf.transpose(raw_image, [1, 2, 0])
         if should_print:
-          raw_image = tf.Print(raw_image, [], message="tf.transpose (%s)" % i)
+          raw_image = log_op(raw_image, "tf.transpose (%s)" % i, is_tensor=True)
         image = self.preprocess(raw_image)
         if should_print:
-          image = tf.Print(image, [], message="preprocess (%s)" % i)
+          image = log_op(image, "preprocess (%s)" % i, is_tensor=True)
         images[split_index].append(image)
         labels[split_index].append(raw_labels[i])
 
       for split_index in xrange(self.num_splits):
         images[split_index] = tf.parallel_stack(images[split_index])
-        images[split_index] = tf.Print(images[split_index], [], message="parallel_stack")
+        images[split_index] = log_op(images[split_index], "parallel_stack", is_tensor=True)
         labels[split_index] = tf.parallel_stack(labels[split_index])
       return images, labels
 
@@ -1133,9 +1134,9 @@ class TestImagePreprocessor(BaseImagePreprocessor):
       assert subset == self.expected_subset
 
     shift_ratio = shift_ratio or self.shift_ratio
-    fake_images = cnn_util.roll_numpy_batches(self.fake_images, self.batch_size,
+    fake_images = roll_numpy_batches(self.fake_images, self.batch_size,
                                               shift_ratio)
-    fake_labels = cnn_util.roll_numpy_batches(self.fake_labels, self.batch_size,
+    fake_labels = roll_numpy_batches(self.fake_labels, self.batch_size,
                                               shift_ratio)
 
     with tf.name_scope('batch_processing'):

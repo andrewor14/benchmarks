@@ -49,7 +49,7 @@ from autoscaling_client import convert_port, AutoscalingClient
 from autoscaling_service import listen_for_autoscaling_requests
 from autoscaling_auto_launch import launch_worker_every_n_seconds
 from autoscaling_params import *
-from cnn_util import log_fn
+from cnn_util import log_fn, log_op
 from models import model_config
 from platforms import util as platforms_util
 from google.protobuf import text_format
@@ -3032,8 +3032,8 @@ class BenchmarkCNN(object):
         for group_index in xrange(self.batch_group_size):
           batch_index = group_index + device_num * self.batch_group_size
           put_op = staging_area.put(
-              [parts[batch_index] for parts in input_list])
-          put_op = tf.Print(put_op, [], message="put_op (CPU staging area)")
+            [parts[batch_index] for parts in input_list])
+          put_op = log_op(put_op, "put_op (CPU)", is_tensor=False)
           input_producer_op.append(put_op)
       assert input_producer_op
 
@@ -3468,7 +3468,7 @@ class BenchmarkCNN(object):
               shapes=[inp.get_shape() for inp in host_input_list])
           # The CPU-to-GPU copy is triggered here.
           gpu_compute_stage_op = gpu_compute_stage.put(host_input_list)
-          gpu_compute_stage_op = tf.Print(gpu_compute_stage_op, [], message="put_op (GPU staging area)")
+          gpu_compute_stage_op = log_op(gpu_compute_stage_op, "put_op (GPU)", is_tensor=False)
           input_list = gpu_compute_stage.get()
           gpu_compute_stage_ops.append(gpu_compute_stage_op)
       else:
