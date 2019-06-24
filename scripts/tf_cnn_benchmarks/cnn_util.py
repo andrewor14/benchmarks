@@ -201,7 +201,9 @@ class ImageProducer(object):
     run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
     run_metadata = tf.RunMetadata()
     trace_filename = self.trace_filename
+    log_fn("Before running put_op")
     self.sess.run([self.put_ops], options=run_options, run_metadata=run_metadata)
+    log_fn("After running put_op")
     if trace_filename and self.trace_write_count < 1:
       log_fn('Image producer: writing to %s' % trace_filename)
       trace_dir = os.path.dirname(trace_filename)

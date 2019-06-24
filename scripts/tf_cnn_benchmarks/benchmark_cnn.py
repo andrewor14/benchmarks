@@ -851,6 +851,9 @@ def benchmark_one_step(sess,
     (results, summary_str) = sess.run(
         [fetches, summary_op], options=run_options, run_metadata=run_metadata)
 
+  if step < 0:
+    log_fn(".")
+
   if not params.forward_only:
     lossval = results['average_loss']
   else:
@@ -3030,6 +3033,7 @@ class BenchmarkCNN(object):
           batch_index = group_index + device_num * self.batch_group_size
           put_op = staging_area.put(
               [parts[batch_index] for parts in input_list])
+          put_op = tf.Print(put_op, [], message="put_op (CPU staging area)")
           input_producer_op.append(put_op)
       assert input_producer_op
 
@@ -3464,6 +3468,7 @@ class BenchmarkCNN(object):
               shapes=[inp.get_shape() for inp in host_input_list])
           # The CPU-to-GPU copy is triggered here.
           gpu_compute_stage_op = gpu_compute_stage.put(host_input_list)
+          gpu_compute_stage_op = tf.Print(gpu_compute_stage_op, [], message="put_op (GPU staging area)")
           input_list = gpu_compute_stage.get()
           gpu_compute_stage_ops.append(gpu_compute_stage_op)
       else:
