@@ -1468,6 +1468,10 @@ class BenchmarkCNN(object):
     self.pending_cluster_spec = None
     self.pending_cluster_spec_lock = threading.Lock()
 
+    # Singleton to reuse preprocessed images across restarts
+    self.input_processing_info = None
+    self.restarting = False
+
     try:
       # Start autoscaling service
       listen_for_autoscaling_requests(self, convert_port(params.host_port))
@@ -1491,6 +1495,7 @@ class BenchmarkCNN(object):
       tf.reset_default_graph()
       self.initialize()
       self.num_warmup_batches = 0
+      self.restarting = True
     except Exception as e:
       log_fn("Error during reinitialization: %s (%s)" % (e, e.__class__.__name__))
       traceback.print_exc()
@@ -2216,6 +2221,7 @@ class BenchmarkCNN(object):
         image_producer = cnn_util.ImageProducer(
             sess, input_producer_op, self.batch_group_size,
             self.params.use_python32_barrier,
+            self.restarting,
             self.trace_filename or None)
         image_producer.start()
       if enqueue_ops:
@@ -2510,6 +2516,9 @@ class BenchmarkCNN(object):
         master=target,
         config=create_config_proto(self.params),
         start_standard_services=start_standard_services) as sess:
+
+      self.graph._finalized = False
+
       for hook in self._hooks:
         hook.after_create_session(sess, sv._coord)
 
@@ -2623,13 +2632,16 @@ class BenchmarkCNN(object):
       image_producer = cnn_util.ImageProducer(
           sess, graph_info.input_producer_op, self.batch_group_size,
           self.params.use_python32_barrier,
+          self.restarting,
           self.trace_filename or None)
       image_producer.start()
-    if graph_info.enqueue_ops:
+    if graph_info.enqueue_ops and not self.restarting:
+      log_fn("Running enqueue ops (%s)" % len(graph_info.enqueue_ops))
       for i in xrange(len(graph_info.enqueue_ops)):
         sess.run(graph_info.enqueue_ops[:(i + 1)])
         if image_producer is not None:
           image_producer.notify_image_consumption()
+      log_fn("Done running enqueue ops")
     self.init_global_step, = sess.run([graph_info.global_step])
     if self.job_name and not self.params.cross_replica_sync:
       # TODO(zhengxq): Do we need to use a global step watcher at all?
@@ -2891,6 +2903,7 @@ class BenchmarkCNN(object):
     # Freeze the graph.
     with graph.as_default():
       with tf.Session(config=create_config_proto(self.params)) as sess:
+        graph._finalized = False
         sess.run(tf.global_variables_initializer())
         sess.run(tf.local_variables_initializer())
         graphdef = graph_util.convert_variables_to_constants(
@@ -2994,8 +3007,9 @@ class BenchmarkCNN(object):
             input_preprocessor.build_multi_device_iterator(
                 self.batch_size, len(self.devices), self.cpu_device,
                 self.params, self.raw_devices, self.dataset, self._doing_eval))
-        return input_processing_info._replace(
+        self.input_processing_info = input_processing_info._replace(
             multi_device_iterator_input=multi_device_iterator.get_next())
+        return self.input_processing_info
 
       subset = 'validation' if self._doing_eval else 'train'
       function_buffering_resources = (
@@ -3004,8 +3018,9 @@ class BenchmarkCNN(object):
               len(self.devices), self.cpu_device, self.params, self.devices,
               self.model.get_input_data_types(subset), self.dataset,
               self._doing_eval))
-      return input_processing_info._replace(
+      self.input_processing_info = input_processing_info._replace(
           function_buffering_resources=function_buffering_resources)
+      return self.input_processing_info
 
     # Not using dataset prefetching. Use a staging area to mimic the prefetching
     # behavior instead.
@@ -3023,11 +3038,14 @@ class BenchmarkCNN(object):
       input_producer_op = []
       input_producer_stages = []
       for device_num in range(len(self.devices)):
-        staging_area = data_flow_ops.StagingArea(
-            [parts[0].dtype for parts in input_list],
-            shapes=[parts[0].get_shape() for parts in input_list],
-            shared_name='input_producer_staging_area_%d_eval_%s' %
-            (device_num, self._doing_eval))
+        if self.input_processing_info is None:
+          staging_area = data_flow_ops.StagingArea(
+              [parts[0].dtype for parts in input_list],
+              shapes=[parts[0].get_shape() for parts in input_list],
+              shared_name='input_producer_staging_area_%d_eval_%s' %
+              (device_num, self._doing_eval))
+        else:
+          staging_area = self.input_processing_info.input_producer_stages[device_num]
         input_producer_stages.append(staging_area)
         for group_index in xrange(self.batch_group_size):
           batch_index = group_index + device_num * self.batch_group_size
@@ -3037,9 +3055,10 @@ class BenchmarkCNN(object):
           input_producer_op.append(put_op)
       assert input_producer_op
 
-    return input_processing_info._replace(
+    self.input_processing_info = input_processing_info._replace(
         input_producer_op=input_producer_op,
         input_producer_stages=input_producer_stages)
+    return self.input_processing_info
 
   def _maybe_initialize_fp16(self):
     """Initialize fp16 settings."""

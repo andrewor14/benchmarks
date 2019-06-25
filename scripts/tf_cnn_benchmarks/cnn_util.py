@@ -182,7 +182,7 @@ class ImageProducer(object):
   ```
   """
 
-  def __init__(self, sess, put_ops, batch_group_size, use_python32_barrier, trace_filename=None):
+  def __init__(self, sess, put_ops, batch_group_size, use_python32_barrier, restarting, trace_filename=None):
     self.sess = sess
     self.num_gets = 0
     self.put_ops = put_ops
@@ -193,6 +193,7 @@ class ImageProducer(object):
       self.put_barrier = threading.Barrier(2)
     else:
       self.put_barrier = Barrier(2)
+    self.restarting = restarting
     self.trace_filename = trace_filename + ".producer" if trace_filename else None
     self.trace_write_count = 0
 
@@ -207,7 +208,8 @@ class ImageProducer(object):
 
   def start(self):
     """Start the image producer."""
-    self.run()
+    if not self.restarting:
+      self.run()
     self.thread = threading.Thread(target=self._loop_producer)
     # Set daemon to true to allow Ctrl + C to terminate all threads.
     self.thread.daemon = True
