@@ -63,7 +63,7 @@ from tensorflow.python.framework import graph_util_impl
 from tensorflow.python.framework import importer
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import gfile
-from tensorflow.python.training import monitored_session
+from tensorflow.python.training import monitored_session, server_lib
 from tensorflow.python.util import nest
 from tensorflow_on_slurm import running_through_slurm, tf_config_from_slurm
 
@@ -1485,7 +1485,6 @@ class BenchmarkCNN(object):
   def reinitialize(self):
     log_fn("[Autoscaling] reinitializing...")
     try:
-      tf.reset_default_graph()
       self.initialize()
       self.num_warmup_batches = 0
     except Exception as e:
@@ -1584,6 +1583,8 @@ class BenchmarkCNN(object):
       (3) Everyone's status is SYNCED or SETTING_UP
 
     Our status must be READY_TO_SYNC before we call this method, and SETTING_UP when we return.
+
+    Return the cluster spec that was synced in dictionary form.
     '''
     log_fn("[Autoscaling] Attempting to sync cluster spec with everyone")
     self.autoscaling_status_barrier(AutoscalingStatus.READY_TO_SYNC)
@@ -1612,7 +1613,7 @@ class BenchmarkCNN(object):
         self.autoscaling_status = AutoscalingStatus.SYNCED
         self.autoscaling_status_barrier(AutoscalingStatus.SYNCED)
         self.autoscaling_status = AutoscalingStatus.SETTING_UP
-        return
+        return json.loads(my_cluster_spec)
 
       # On failure, reset client with cluster spec from the master autoscaling server
       log_fn("[Autoscaling] %s, trying again in %s second(s)" %\
@@ -1654,7 +1655,7 @@ class BenchmarkCNN(object):
       self.pending_cluster_spec_lock.release()
 
     # Make sure we have the same cluster membership information as everyone else
-    self.sync_cluster_spec()
+    cluster_spec = self.sync_cluster_spec()
 
     # Use the batch size from the command line if specified, otherwise use the
     # model's default batch size.  Scale the benchmark's batch size by the
@@ -1691,11 +1692,20 @@ class BenchmarkCNN(object):
     self.local_parameter_device_flag = self.params.local_parameter_device
     if self.job_name:
       self.task_index = self.params.task_index
-      # Destroy any existing servers (stop is not enough)
-      if self.cluster_manager is not None:
-        self.cluster_manager._server.destroy()
-      self.cluster_manager = platforms_util.get_cluster_manager(
+      if self.cluster_manager is None:
+        self.cluster_manager = platforms_util.get_cluster_manager(
           self.params, create_config_proto(self.params))
+      else:
+        server_def = server_lib._make_server_def(
+          cluster_spec,
+          job_name=self.params.job_name,
+          task_index=self.params.task_index,
+          protocol=self.params.server_protocol,
+          config=create_config_proto(self.params))
+        log_fn("Setting server def to: %s" % server_def)
+        tf.contrib.eager.set_server_def(server_def)
+        log_fn("Done!")
+
       assert isinstance(self.cluster_manager, cnn_util.BaseClusterManager)
 
       worker_prefix = '/job:worker/replica:0/task:%s' % self.task_index
@@ -2557,14 +2567,14 @@ class BenchmarkCNN(object):
 
     Return whether this process should restart.
     '''
-    should_restart = False
+    # If there is no change in cluster membership then there's no need to restart
+    if self.pending_cluster_spec is None:
+      return False
 
-    # If there is a change in cluster membership and we haven't already transitioned to
-    # READY_TO_SYNC yet, then go ahead and transition
-    if self.pending_cluster_spec is not None and\
-         self.autoscaling_status != AutoscalingStatus.READY_TO_SYNC:
-       self.autoscaling_status_barrier(AutoscalingStatus.RUNNING)
-       self.autoscaling_status = AutoscalingStatus.READY_TO_SYNC
+    # Make sure we're ready to sync
+    if self.autoscaling_status != AutoscalingStatus.READY_TO_SYNC:
+      self.autoscaling_status_barrier(AutoscalingStatus.RUNNING)
+      self.autoscaling_status = AutoscalingStatus.READY_TO_SYNC
 
     # Make sure everyone has had the chance to transition to READY_TO_SYNC
     sess.run(graph_info.execution_barrier)
@@ -2582,7 +2592,8 @@ class BenchmarkCNN(object):
           self.autoscaling_status = AutoscalingStatus.TERMINATED
         else:
           log_fn("[Autoscaling] Received signal to restart server")
-          self.save_variables(sess)
+          # TODO: save variables if we're rebuilding the graph
+          #self.save_variables(sess)
       else:
         log_fn("[Autoscaling] Not restarting because not everyone is READY_TO_SYNC yet")
     return should_restart
@@ -2715,7 +2726,13 @@ class BenchmarkCNN(object):
           self.params.variable_update == 'collective_all_reduce') else 0
 
       if self.maybe_restart(sess, graph_info):
-        return None
+        if self.autoscaling_status == AutoscalingStatus.TERMINATED:
+          return None
+        # At this point we should be READY_TO_SYNC
+        self.reinitialize()
+        # At this point we should be SETTING_UP
+        self.autoscaling_status_barrier(AutoscalingStatus.SETTING_UP)
+        self.autoscaling_status = AutoscalingStatus.RUNNING
 
       (summary_str, last_average_loss) = benchmark_one_step(
           sess, graph_info.fetches, local_step,
@@ -3710,11 +3727,13 @@ class BenchmarkCNN(object):
     Returns:
       An op that should be used as control dependency before starting next step.
     """
+    # TODO: rebuild graph if num_workers exceeds MAX_WORKERS
+    MAX_WORKERS = 100
     self.sync_queue_counter += 1
     with tf.device(self.sync_queue_devices[(
         self.sync_queue_counter % len(self.sync_queue_devices))]):
       sync_queues = [
-          tf.FIFOQueue(self.num_workers, [tf.bool], shapes=[[]],
+          tf.FIFOQueue(MAX_WORKERS, [tf.bool], shapes=[[]],
                        shared_name='%s%s' % (name_prefix, i))
           for i in range(self.num_workers)]
       queue_ops = []

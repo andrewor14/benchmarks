@@ -25,11 +25,12 @@ export DATASET="cifar10"
 export MODEL="resnet56"
 export OPTIMIZER="momentum"
 export CROSS_REPLICA_SYNC="true"
-export BATCH_SIZE=8192
+export BATCH_SIZE=32
 export NUM_EPOCHS=10000
 export SERVER_PROTOCOL="grpc"
 export DISPLAY_EVERY="1"
 export AUTOSCALING_DISABLE_CHECKPOINT_RESTORE="true"
+export AUTOSCALING_DISABLE_WRITE_GRAPH="true"
 #export DISABLE_INPUT_PREPROCESSING="true"
 
 # Run it
