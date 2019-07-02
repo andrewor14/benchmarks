@@ -82,6 +82,8 @@ GraphInfo = namedtuple(  # pylint: disable=invalid-name
         'enqueue_ops',
         # Fetches of sess.run()
         'fetches',
+        # Things in fetches excluding the sync queues at the end of each step
+        'main_fetch_group',
         # Op that performs synchronization in distributed mode
         'execution_barrier',
         # The global step variable
@@ -1452,6 +1454,12 @@ class BenchmarkCNN(object):
     self.global_batch_size = None
     self.autoscaling_client = None
 
+    # Are we joining an existing cluster?
+    self.joining = False
+
+    # Are we waiting for new workers to finish warming up so we can update our queues?
+    self.waiting_to_update_queues = False
+
     # Status to synchronize cluster membership changes
     # Accesses must be guarded by `self._autoscaling_status_lock`
     self._autoscaling_status = AutoscalingStatus.READY_TO_SYNC
@@ -1473,6 +1481,8 @@ class BenchmarkCNN(object):
       if first_worker is None:
         first_worker = self.params.worker_hosts.split(",")[0]
         first_worker = convert_port(first_worker)
+      else:
+        self.joining = True
       self.autoscaling_client = AutoscalingClient(first_worker)
       # Request to join the cluster
       self.autoscaling_client.master_server.join_cluster(self.params.host_port)
@@ -1545,7 +1555,7 @@ class BenchmarkCNN(object):
         restore_ops.append(v.assign(self.saved_variables[v.name]))
     return restore_ops
 
-  def autoscaling_status_barrier(self, target, soft=False, except_for_me=False):
+  def autoscaling_status_barrier(self, target, soft=False, except_for_me=False, strict=False):
     '''
     Wait until everyone has reached the target autoscaling status or the one after it.
 
@@ -1557,7 +1567,8 @@ class BenchmarkCNN(object):
       raise ValueError("Current autoscaling status %s must match barrier target %s" %\
         (self.autoscaling_status, target))
     log_fn("[Autoscaling] Waiting for everyone %sto reach %s" % ("else " if except_for_me else "", target))
-    target_next = get_next_autoscaling_status(target)
+    # If we are doing a strict barrier, allow only the target (not the next state after the target)
+    target_next = target if strict else get_next_autoscaling_status(target)
     while True:
       # Force _servers to be populated
       servers = self.autoscaling_client.servers
@@ -1695,16 +1706,16 @@ class BenchmarkCNN(object):
       if self.cluster_manager is None:
         self.cluster_manager = platforms_util.get_cluster_manager(
           self.params, create_config_proto(self.params))
-      else:
-        server_def = server_lib._make_server_def(
-          cluster_spec,
-          job_name=self.params.job_name,
-          task_index=self.params.task_index,
-          protocol=self.params.server_protocol,
-          config=create_config_proto(self.params))
-        log_fn("Setting server def to: %s" % server_def)
-        tf.contrib.eager.set_server_def(server_def)
-        log_fn("Done!")
+      #else:
+      #  server_def = server_lib._make_server_def(
+      #    cluster_spec,
+      #    job_name=self.params.job_name,
+      #    task_index=self.params.task_index,
+      #    protocol=self.params.server_protocol,
+      #    config=create_config_proto(self.params))
+      #  log_fn("Setting server def to: %s" % server_def)
+      #  tf.contrib.eager.set_server_def(server_def)
+      #  log_fn("Done!")
 
       assert isinstance(self.cluster_manager, cnn_util.BaseClusterManager)
 
@@ -2190,7 +2201,7 @@ class BenchmarkCNN(object):
       execution_barrier = None
       # We do not use the global step during evaluation.
       global_step = None
-      return GraphInfo(input_producer_op, enqueue_ops, fetches,
+      return GraphInfo(input_producer_op, enqueue_ops, fetches, None,
                        execution_barrier, global_step, local_var_init_op_group,
                        summary_op)
 
@@ -2341,8 +2352,11 @@ class BenchmarkCNN(object):
       (input_producer_op, enqueue_ops, fetches) = self._build_model()
     fetches_list = nest.flatten(list(fetches.values()))
     main_fetch_group = tf.group(*fetches_list, name='main_fetch_group')
+    # If we're joining an existing cluster, then don't bother with this barrier
+    # for now; we will add it later after finishing warm up
+    # TODO: we do want this barrier if we're rebuilding the graph
     execution_barrier = None
-    if not self.single_session and self.job_name:
+    if not self.single_session and self.job_name and not self.joining:
       execution_barrier = self.add_sync_queues_and_barrier(
           'execution_barrier_', [])
 
@@ -2351,8 +2365,11 @@ class BenchmarkCNN(object):
       with tf.control_dependencies([main_fetch_group]):
         fetches['inc_global_step'] = global_step.assign_add(1)
 
+    # If we're joining an existing cluster, then don't bother with this barrier
+    # for now; we will add it later after finishing warm up
+    # TODO: we do want this barrier if we're rebuilding the graph
     if ((not self.single_session) and (not self.distributed_collective) and
-        self.job_name and self.params.cross_replica_sync):
+        self.job_name and self.params.cross_replica_sync) and not self.joining:
       # Block all replicas until all replicas are ready for next step.
       fetches['sync_queues'] = self.add_sync_queues_and_barrier(
           'sync_queues_step_end_', [main_fetch_group])
@@ -2372,12 +2389,18 @@ class BenchmarkCNN(object):
     if self.saved_variables is not None:
       variable_manager_init_ops.extend(self.restore_variables_ops())
     if table_init_ops:
+      log_fn("Adding table init ops: %s" % table_init_ops)
       variable_manager_init_ops.extend([table_init_ops])
     if not self.forward_only_and_freeze:
-      with tf.control_dependencies([local_var_init_op]):
-        variable_manager_init_ops.extend(self.variable_mgr.get_post_init_ops())
-    if ((not self.single_session) and (not self.distributed_collective) and
-        self.job_name and self.params.cross_replica_sync):
+      post_init_ops = self.variable_mgr.get_post_init_ops()
+      if len(post_init_ops) > 0:
+        log_fn("Adding post init ops: %s" % post_init_ops)
+        with tf.control_dependencies([local_var_init_op]):
+          variable_manager_init_ops.extend(post_init_ops)
+    # If we're joining an existing cluster, then don't bother with this barrier
+    # TODO: we do want this barrier if we're rebuilding the graph
+    if not self.single_session and not self.distributed_collective and\
+        self.job_name and self.params.cross_replica_sync and not self.joining:
       # Ensure all workers execute variable_manager_init_ops before they start
       # executing the model.
       variable_manager_init_ops.append(
@@ -2391,6 +2414,7 @@ class BenchmarkCNN(object):
         input_producer_op=input_producer_op,
         enqueue_ops=enqueue_ops,
         fetches=fetches,
+        main_fetch_group=main_fetch_group,
         execution_barrier=execution_barrier,
         global_step=global_step,
         local_var_init_op_group=local_var_init_op_group,
@@ -2567,6 +2591,8 @@ class BenchmarkCNN(object):
 
     Return whether this process should restart.
     '''
+    #log_fn("Listing devices: %s" % tf.contrib.eager.list_devices())
+
     # If there is no change in cluster membership then there's no need to restart
     if self.pending_cluster_spec is None:
       return False
@@ -2688,6 +2714,9 @@ class BenchmarkCNN(object):
     loop_start_time = time.time()
     last_average_loss = None
 
+    # All newcomers should update their queues after finishing warm up
+    self.waiting_to_update_queues = self.joining
+
     while not done_fn():
       if local_step == 0:
         log_fn('Done warm up')
@@ -2696,7 +2725,8 @@ class BenchmarkCNN(object):
         if self.task_index == 0 and os.getenv(AUTOSCALING_LAUNCH_WORKER_EVERY_N_SECONDS) is not None:
           threading.Thread(target=launch_worker_every_n_seconds, args=[self.autoscaling_client]).start()
 
-        if graph_info.execution_barrier:
+        # If we're joining, then other workers are probably already running, so let's just catch up
+        if graph_info.execution_barrier and not self.joining:
           log_fn('Waiting for other replicas to finish warm up')
           sess.run([graph_info.execution_barrier])
 
@@ -2733,6 +2763,23 @@ class BenchmarkCNN(object):
         # At this point we should be SETTING_UP
         self.autoscaling_status_barrier(AutoscalingStatus.SETTING_UP)
         self.autoscaling_status = AutoscalingStatus.RUNNING
+        self.waiting_to_update_queues = True
+
+      # After restart, we want to update our queues once all the new workers have finished
+      # running warm up (possibly including ourselves)
+      if self.waiting_to_update_queues and local_step >= 0 and\
+          self.autoscaling_status_barrier(AutoscalingStatus.RUNNING, soft=True, strict=True):
+        log_fn("Everyone is now done with warm ups, updating queues")
+        log_fn("Finalized? %s" % sess.graph.finalized)
+        sess.graph._finalized = False
+        log_fn("Finalized2? %s" % sess.graph.finalized)
+        new_execution_barrier = self.add_sync_queues_and_barrier('execution_barrier_', [])
+        if 'sync_queues' in graph_info.fetches:
+          graph_info.fetches['sync_queues'] = self.add_sync_queues_and_barrier(
+            'sync_queues_step_end_', [graph_info.main_fetch_group])
+        graph_info = graph_info._replace(execution_barrier=new_execution_barrier)
+        log_fn("Done updating queues")
+        self.waiting_to_update_queues = False
 
       (summary_str, last_average_loss) = benchmark_one_step(
           sess, graph_info.fetches, local_step,
@@ -2972,6 +3019,7 @@ class BenchmarkCNN(object):
         local_var_init_op_group=_get_tensors_or_ops(
             graph_info.local_var_init_op_group),
         fetches=_get_tensors_or_ops(graph_info.fetches),
+        main_fetch_group=_get_tensors_or_ops(graph_info.main_fetch_group),
         global_step=updated_global_step,
         summary_op=None)
     return (updated_graph, updated_graph_info)
